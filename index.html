@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>T-UI Installer — a custom launcher for the LilyGo T-Deck</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root{
+    --bg:#0b0b0d; --panel:#141417; --panel2:#1c1c20; --line:#2a2a30;
+    --text:#f4f4f6; --dim:#9a9aa2; --accent:#30d158; --accent2:#0a84ff; --warn:#ff9f0a;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%, #17321f 0%, var(--bg) 55%) fixed;
+    color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px 80px}
+  header{text-align:center;padding:28px 0 8px}
+  .logo{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:74px;height:74px;border-radius:20px;margin-bottom:14px;
+    background:linear-gradient(145deg,#1e1e22,#0e0e10);border:1px solid var(--line);
+    font-size:34px;font-weight:800;letter-spacing:1px;color:var(--accent);
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  h1{font-size:30px;margin:6px 0 4px;letter-spacing:.5px}
+  .tag{color:var(--dim);margin:0 0 6px;font-size:17px}
+  .pill{display:inline-block;font-size:12px;color:var(--dim);border:1px solid var(--line);
+    border-radius:999px;padding:3px 10px;margin-top:6px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin:22px 0;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .install{text-align:center}
+  .install h2{margin:2px 0 14px;font-size:20px}
+  esp-web-install-button{--esp-tools-button-color:#0b0b0d;--esp-tools-button-text-color:#fff}
+  .btnwrap{display:flex;justify-content:center;margin:8px 0 4px}
+  .btnwrap button, esp-web-install-button::part(button){
+    background:var(--accent);color:#04110a;font-weight:700;font-size:17px;
+    border:none;border-radius:12px;padding:14px 26px;cursor:pointer;
+  }
+  .unsupported{color:var(--warn);font-size:14px;margin-top:6px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0 4px}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 8px;font-size:13px}
+  .step b{display:block;font-size:20px;color:var(--accent);margin-bottom:4px}
+  @media(max-width:560px){.steps{grid-template-columns:repeat(2,1fr)}}
+
+  .reqs{list-style:none;padding:0;margin:16px 0 0;font-size:14px;color:var(--dim);text-align:left;
+    display:grid;gap:6px}
+  .reqs li::before{content:"•";color:var(--accent);margin-right:8px}
+  .warnbox{background:rgba(255,159,10,.08);border:1px solid rgba(255,159,10,.3);color:#ffd79a;
+    border-radius:12px;padding:12px 14px;font-size:14px;margin-top:16px;text-align:left}
+
+  details{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    margin:12px 0;overflow:hidden}
+  summary{cursor:pointer;padding:16px 20px;font-weight:600;font-size:17px;list-style:none;
+    display:flex;align-items:center;justify-content:space-between}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";color:var(--accent);font-size:22px;font-weight:400}
+  details[open] summary::after{content:"–"}
+  .body{padding:0 20px 20px;color:#dcdce2}
+  .body h4{color:#fff;margin:16px 0 6px;font-size:15px}
+  .body code{background:#000;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
+  .body ul{padding-left:20px;margin:6px 0}
+  .body li{margin:4px 0}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  footer{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--dim);font-size:12.5px;line-height:1.7;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">T‑UI</div>
+    <h1>T‑UI Installer</h1>
+    <p class="tag">A custom launcher for the LilyGo&nbsp;T‑Deck</p>
+    <span class="pill">Built on Meshtastic · unofficial community build</span>
+  </header>
+
+  <!-- INSTALL -->
+  <div class="card install">
+    <h2>Install it on your T‑Deck</h2>
+    <div class="btnwrap">
+      <esp-web-install-button manifest="./manifest.json">
+        <button slot="activate">⚡ Install T‑UI</button>
+        <span slot="unsupported" class="unsupported">Your browser can't flash devices — please use Google Chrome or Microsoft Edge on a computer.</span>
+        <span slot="not-allowed" class="unsupported">Flashing needs to run over a secure (https) connection.</span>
+      </esp-web-install-button>
+    </div>
+    <div class="steps">
+      <div class="step"><b>1</b>Plug the T‑Deck into your computer with a USB‑C cable</div>
+      <div class="step"><b>2</b>Click <strong>Install</strong> above</div>
+      <div class="step"><b>3</b>Pick your device from the port list, then Connect</div>
+      <div class="step"><b>4</b>Wait for the bar to finish — done!</div>
+    </div>
+
+    <ul class="reqs">
+      <li>Works on <strong>Windows or Mac</strong> — use <strong>Chrome or Edge</strong> (no driver install needed).</li>
+      <li>For the standard <strong>LilyGo T‑Deck</strong> (not the e‑ink “Plus/Max”).</li>
+      <li>A <strong>USB‑C data cable</strong> (some cables are charge‑only).</li>
+      <li>A <strong>microSD card</strong> in the T‑Deck for Maps, Notes, saved pins, and add‑on apps.</li>
+    </ul>
+
+    <div class="warnbox">⚠️ Installing <strong>erases the device</strong> and sets it up fresh (any existing
+      Meshtastic identity/channels are wiped). That's normal for a first install.</div>
+  </div>
+
+  <!-- WHAT IS IT -->
+  <details>
+    <summary>What is T‑UI?</summary>
+    <div class="body">
+      <p>T‑UI is a friendly home‑screen “launcher” for the T‑Deck, built on top of the open‑source
+      <a href="https://meshtastic.org" target="_blank" rel="noopener">Meshtastic</a> mesh‑radio firmware.
+      Your T‑Deck still does everything Meshtastic does (off‑grid text messaging over long‑range radio,
+      no cell service needed) — T‑UI just wraps it in a phone‑like grid of apps and adds a bunch of its own.</p>
+      <p>Everything is baked into the one file you flash above — all the apps below come with it.</p>
+    </div>
+  </details>
+
+  <!-- HOW TO USE -->
+  <details>
+    <summary>How to use your T‑Deck</summary>
+    <div class="body">
+      <h4>Getting around</h4>
+      <ul>
+        <li><strong>Tap</strong> the touchscreen to open apps and press buttons.</li>
+        <li><strong>Double‑click the trackball</strong> to go Home from anywhere, and to wake the screen.</li>
+        <li>Swipe the home screen sideways for a second page of apps. Long‑press a tile to rearrange.</li>
+      </ul>
+      <h4>The lock</h4>
+      <ul>
+        <li>The device locks itself when the screen sleeps, and asks for a code. The default code is
+          <strong><code>1234</code></strong>.</li>
+        <li>Set your own in <strong>Settings → Lock PIN → Change</strong>. Double‑click the trackball on the
+          Home screen to lock it on purpose.</li>
+      </ul>
+      <h4>The apps</h4>
+      <ul>
+        <li><strong>Mesh</strong> — the full Meshtastic messaging/nodes/map.</li>
+        <li><strong>Maps</strong> — your own offline map with drop‑pins (see the Maps guide below).</li>
+        <li><strong>Files</strong> — browse the SD card and internal memory; make folders, copy, trash.</li>
+        <li><strong>Notes</strong>, <strong>Calculator</strong>, <strong>Stopwatch &amp; Timer</strong>,
+          <strong>Flashlight</strong>, plus games (<strong>Snake</strong>, <strong>Breakout</strong>) and a
+          <strong>Metronome</strong>.</li>
+        <li><strong>Share files (Wi‑Fi)</strong> — in Settings; sends files to/from your computer wirelessly
+          (turn it on only when you need it).</li>
+      </ul>
+      <h4>Kill switch (privacy)</h4>
+      <ul>
+        <li>In Settings you can toggle the mesh radio off — it stops sending/receiving while the rest of the
+          device keeps working.</li>
+      </ul>
+      <h4>Transferring files (the Share screen)</h4>
+      <ul>
+        <li>Open <strong>Settings → Share files → Open</strong>. It shows an address like
+          <code>ftp://192.168.1.42</code> and a login (<code>tdeck</code> / <code>1234</code>).</li>
+        <li>On your computer, use a free FTP app like <strong>FileZilla</strong> (Host = that IP,
+          Username <code>tdeck</code>, Password <code>1234</code>, Port <code>21</code>). Windows Explorer's
+          built‑in FTP is unreliable — FileZilla works best. Keep the Share screen open while transferring.</li>
+      </ul>
+    </div>
+  </details>
+
+  <!-- MAPS -->
+  <details>
+    <summary>Getting maps for your area</summary>
+    <div class="body">
+      <p>Map images aren't included (they'd be huge, and everyone wants their own region). You load maps for
+      <em>your</em> area onto the microSD card yourself. T‑UI uses the same map format as Meshtastic, so any
+      T‑Deck map guide works.</p>
+      <h4>The short version</h4>
+      <ul>
+        <li>Maps are standard <strong>OpenStreetMap tiles</strong> — small <code>.png</code> squares organised
+          by zoom level.</li>
+        <li>They go in a folder named <strong><code>/maps</code></strong> at the top level of the SD card,
+          in <code>/maps/&lt;zoom&gt;/&lt;x&gt;/&lt;y&gt;.png</code> form.</li>
+        <li>Use a community “map tile downloader” for the Meshtastic T‑Deck to grab your area (pick a region and
+          zoom range, it produces the <code>/maps</code> folder), then copy that folder onto the SD card.</li>
+        <li>Pop the card back in — the <strong>Maps</strong> app now shows your area, and you can long‑press to
+          drop pins.</li>
+      </ul>
+      <p style="color:var(--dim)">Tip: search “Meshtastic T‑Deck offline map tiles” for the current downloader
+      tools and step‑by‑step. Start with a smaller zoom range so it doesn't take forever.</p>
+    </div>
+  </details>
+
+  <!-- MAKE APPS -->
+  <details>
+    <summary>Make your own apps</summary>
+    <div class="body">
+      <p>You can write your own little apps and games for the T‑Deck in a simple language called <strong>Lua</strong>
+      — just a text file, no programming tools needed. Even better: hand the app‑maker's guide to an AI assistant
+      and describe the game you want.</p>
+      <ul>
+        <li>An app is one file called <code>main.lua</code>, placed in <code>/apps/&lt;yourapp&gt;/</code> on the
+          SD card. It shows up as a tile automatically.</li>
+        <li>Apps draw text and boxes, play beeps, and respond to taps — full details (screen size, commands,
+          a working example, and a copy‑paste prompt for an AI) are in the app‑maker's guide.</li>
+      </ul>
+      <p><strong>➡️ Full guide:</strong> <a href="./LUA_APP_SPEC.md">Writing an app for the T‑Deck (Lua)</a></p>
+    </div>
+  </details>
+
+  <footer>
+    <strong>T‑UI</strong> is an unofficial, community‑made custom firmware built on
+    <a href="https://meshtastic.org" target="_blank" rel="noopener">Meshtastic®</a>, the open‑source
+    mesh‑communication project. It is <strong>not</strong> created, endorsed, or supported by the Meshtastic
+    project or LilyGo. It's a modified version of Meshtastic's open‑source firmware, released under the same
+    <strong>GPL‑3.0</strong> license; source code: <a href="https://github.com/jeeab/t-ui-firmware" target="_blank" rel="noopener">github.com/jeeab/t-ui-firmware</a>.
+    Use at your own risk.
+  </footer>
+
+</div>
+</body>
+</html>
