@@ -36,7 +36,7 @@ except that you'll almost always want `on_open`.
 |---|---|---|
 | `on_open()` | once, when the app starts | draw the initial/static screen, set up state |
 | `on_tick(dt)` | ~every 33 ms (about 30×/sec) | animation, game logic, movement |
-| `on_touch(x, y)` | on a tap (finger down then up) | buttons, "tap to start", firing, menu picks |
+| `on_touch(x, y)` | the moment the finger lands | buttons, "tap to start", firing, menu picks |
 | `on_drag(x, y)` | repeatedly while a finger slides | steering a paddle, sliders, dragging |
 | `on_close()` | once, when the user exits the app | (rarely needed — state is discarded anyway) |
 
