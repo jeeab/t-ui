@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "base": "https://jeeab.github.io/t-ui/",
+  "apps": [
+    {
+      "id": "pinball",
+      "name": "Pinball",
+      "kind": "game",
+      "desc": "Neon space pinball. Hold either side of the screen to work the flippers.",
+      "ver": "5",
+      "bytes": 12534,
+      "url": "apps/pinball/main.lua"
+    },
+    {
+      "id": "dice",
+      "name": "Dice",
+      "kind": "tool",
+      "desc": "Two big dice on a felt table. Tap to roll, or switch to a single die.",
+      "ver": "1",
+      "bytes": 2870,
+      "url": "apps/dice/main.lua"
+    },
+    {
+      "id": "reaction",
+      "name": "Reaction",
+      "kind": "game",
+      "desc": "Tap when the box turns green. Shows your milliseconds and your best ever.",
+      "ver": "1",
+      "bytes": 2175,
+      "url": "apps/reaction/main.lua"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Apps are downloaded byte-for-byte by the device, and catalog.json records their exact
+# size - so line endings must never drift. Keep them LF everywhere, on every machine.
+apps/**/*.lua text eol=lf
+apps/catalog.json text eol=lf
+*.zip binary
