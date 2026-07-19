@@ -73,6 +73,15 @@
       "ver": "1",
       "bytes": 3318,
       "url": "apps/breathe/main.lua"
+    },
+    {
+      "id": "stars",
+      "name": "Starfield",
+      "kind": "game",
+      "desc": "Fly through 220 stars. Drag to steer, tap for warp speed.",
+      "ver": "1",
+      "bytes": 3060,
+      "url": "apps/stars/main.lua"
     }
   ]
 }

@@ -81,6 +81,48 @@ Limits: at most **64 elements** on screen at once. Text uses one built-in font (
   `on_touch`/`on_drag` still work and are simpler — reach for `device.touches()` only when you
   genuinely need two fingers at the same time.
 
+### The canvas — for games (firmware 2026.07.19.2 and newer)
+`screen.*` above is a **UI toolkit**: every element is a real object and there's a hard ceiling
+of **80** of them. Perfect for tools, fine for a simple game, hopeless for a tile map, a
+particle effect, or a hundred bullets.
+
+The **canvas** is a full screen of pixels you draw into freely. It's a single object as far as
+the system is concerned, so the 80-element limit stops applying. Every call below runs as
+native code, so it's fast enough for real games — your Lua decides *what* to draw, the canvas
+does the drawing.
+
+```lua
+function on_open()
+  if not canvas.begin() then return end   -- false if memory is short: fall back to screen.*
+end
+
+function on_tick()
+  canvas.clear(0x000000)                  -- wipe the frame
+  canvas.circle(160, 120, 30, 0x30d158, true)
+  canvas.rect(10, 200, 60, 8, 0xff453a)
+  canvas.line(0, 0, 320, 240, 0x0a84ff)
+  canvas.pixel(50, 50, 0xffffff)
+  canvas.flip()                           -- show it
+end
+```
+
+- `canvas.begin()` — set it up. Returns `false` if there wasn't enough memory; check it.
+- `canvas.clear(color)` — fill the whole frame.
+- `canvas.rect(x, y, w, h, color)` — filled rectangle.
+- `canvas.circle(x, y, radius, color, filled)` — `filled` is `true` or `false`.
+- `canvas.line(x1, y1, x2, y2, color)`
+- `canvas.pixel(x, y, color)`
+- `canvas.flip()` — **nothing appears until you call this.** Draw the whole frame, then flip,
+  and the player never sees a half-drawn picture.
+
+Anything drawn off the edge is safely ignored, so you don't need to check coordinates yourself.
+
+**Mix freely:** the canvas sits *behind* the `screen.*` elements, so draw your game world on
+the canvas and put the score on top with `screen.label`. That's usually the best of both.
+
+**Costs about 150 KB of memory** while your app is open, released when you leave. Clearing and
+redrawing the whole frame each tick is the normal way to use it.
+
 ### Saving data (your app remembers things)
 Your app has its own folder on the SD card and can keep files there. Use it for high scores,
 settings, saved games — anything that should survive closing the app or a reboot.
