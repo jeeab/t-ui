@@ -76,6 +76,13 @@ function on_tick()
 
     canvas.clear(0x000000)
 
+    -- Steering moves the point you're flying towards. Nudging each star's own position
+    -- (the first attempt) shifted the picture by about 1.5 pixels — technically working,
+    -- completely invisible. Moving the vanishing point swings the whole field, and the
+    -- per-star nudge below then makes near stars sweep further than distant ones, which
+    -- is what sells it as turning rather than sliding.
+    local vpx = CX - drift * 130
+
     local speed = warp * 0.012
     for i = 1, COUNT do
         local s = stars[i]
@@ -86,16 +93,19 @@ function on_tick()
             pz = s.z
         end
 
-        s.x = s.x + drift * 0.0016 / s.z
+        -- Note the minus: steering left must sweep the stars RIGHT, the same way the
+        -- vanishing point moves. With a plus these two cancelled out and the whole effect
+        -- nearly vanished.
+        s.x = s.x - drift * 0.010 / s.z
 
-        local px = CX + (s.x / s.z) * CX
+        local px = vpx + (s.x / s.z) * CX
         local py = CY + (s.y / s.z) * CY
 
         if px < 0 or px >= W or py < 0 or py >= H then
             reseed(s, false)
         elseif s.z < 0.35 then
             -- close stars get a motion streak back towards where they came from
-            local ox = CX + (s.x / pz) * CX
+            local ox = vpx + (s.x / pz) * CX
             local oy = CY + (s.y / pz) * CY
             canvas.line(math.floor(ox), math.floor(oy), math.floor(px), math.floor(py), s.c)
         else

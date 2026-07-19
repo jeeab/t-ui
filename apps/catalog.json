@@ -79,8 +79,8 @@
       "name": "Starfield",
       "kind": "game",
       "desc": "Fly through 220 stars. Drag to steer, tap WARP for speed.",
-      "ver": "2",
-      "bytes": 4226,
+      "ver": "3",
+      "bytes": 4879,
       "url": "apps/stars/main.lua"
     }
   ]
