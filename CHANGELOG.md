@@ -5,6 +5,14 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Get Apps tells you about updates
+
+**2026.07.19.12** · 2026-07-19
+
+- Get Apps now shows an orange Update button when an app you've installed has a newer version, and says how many updates are waiting when you open it.
+- It checks every time you open the screen, so you don't have to go looking.
+
+
 ## Room for bigger games
 
 **2026.07.19.11** · 2026-07-19

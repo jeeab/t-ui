@@ -2,6 +2,15 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.12",
+      "date": "2026-07-19",
+      "title": "Get Apps tells you about updates",
+      "changes": [
+        "Get Apps now shows an orange Update button when an app you've installed has a newer version, and says how many updates are waiting when you open it.",
+        "It checks every time you open the screen, so you don't have to go looking."
+      ]
+    },
+    {
       "version": "2026.07.19.11",
       "date": "2026-07-19",
       "title": "Room for bigger games",
