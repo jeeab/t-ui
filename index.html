@@ -120,6 +120,8 @@
       <li>For the standard <strong>LilyGo T‑Deck</strong> (not the e‑ink “Plus/Max”).</li>
       <li>A <strong>USB‑C data cable</strong> (some cables are charge‑only).</li>
       <li>A <strong>microSD card</strong> in the T‑Deck for Maps, Notes, saved pins, and add‑on apps.</li>
+      <li>A <strong>GPS module</strong> is recommended so everything works — it's what puts you on the map and
+        sets the clock. Not required: the rest of the device works fine without one.</li>
     </ul>
 
     <div class="warnbox">⚠️ Installing <strong>erases the device</strong> and sets it up fresh (any existing
@@ -182,11 +184,6 @@
         <li><strong>Share files (Wi‑Fi)</strong> — in Settings; sends files to/from your computer wirelessly
           (turn it on only when you need it).</li>
       </ul>
-      <h4>Kill switch (privacy)</h4>
-      <ul>
-        <li>In Settings you can toggle the mesh radio off — it stops sending/receiving while the rest of the
-          device keeps working.</li>
-      </ul>
       <h4>Transferring files (the Share screen)</h4>
       <ul>
         <li>Open <strong>Settings → Share files → Open</strong>. It shows an address like
@@ -202,10 +199,30 @@
   <details>
     <summary>Getting maps for your area</summary>
     <div class="body">
-      <p>Map images aren't included (they'd be huge, and everyone wants their own region). You load maps for
-      <em>your</em> area onto the microSD card yourself. T‑UI uses the same map format as Meshtastic, so any
-      T‑Deck map guide works.</p>
-      <h4>The short version</h4>
+      <p>Map images aren't included — they'd be enormous, and everyone wants a different part of the world.
+      There are two ways to get them, and <strong>the first one needs nothing but the device itself</strong>.</p>
+
+      <h4>📲 Download them on the T‑Deck (easiest)</h4>
+      <ul>
+        <li>Open <strong>Maps</strong>, tap the <strong>gear</strong>, and choose <strong>Download this area</strong>.</li>
+        <li>Frame the area you want on the map first — what you can see is what it downloads.</li>
+        <li>Pick a detail level and it shows you the size before you commit. Each level is roughly
+          <strong>four times</strong> the tiles of the one below, so start modest.</li>
+        <li>It uses Wi‑Fi, picks up where it left off if interrupted, and the screen can sleep while it works.
+          Stay on the download screen though — leaving it stops the download.</li>
+      </ul>
+      <p><strong>Two map sources are built in</strong>, both free and happy to serve large downloads:</p>
+      <ul>
+        <li><strong>USGS Topo</strong> — the United States. Public‑domain topographic maps from the US
+          Geological Survey.</li>
+        <li><strong>TopPlusOpen</strong> — Europe‑wide (and usable worldwide at lower detail), published by
+          Germany's federal mapping agency.</li>
+      </ul>
+      <p style="color:var(--dim)">Pick your source from the same gear menu before downloading.</p>
+
+      <h4>💻 Load them from a computer (anywhere else in the world)</h4>
+      <p>If you're outside the regions above — or you want a different style of map — the classic method still
+      works, and T‑UI uses the same map format as Meshtastic, so any T‑Deck map guide applies.</p>
       <ul>
         <li>Maps are standard <strong>OpenStreetMap tiles</strong> — small <code>.png</code> squares organised
           by zoom level.</li>
@@ -237,6 +254,18 @@
       <p><strong>➡️ Full guide:</strong> <a href="./LUA_APP_SPEC.md">Writing an app for the T‑Deck (Lua)</a></p>
     </div>
   </details>
+
+  <!-- GET APPS -->
+  <div class="card" style="border-color:rgba(191,90,242,.45);text-align:left">
+    <h2 style="margin:2px 0 8px;font-size:20px">🕹️ Get Apps</h2>
+    <p style="color:#dcdce2;font-size:15px;margin:0 0 12px">
+      Free add‑on apps and games — a score keeper, unit converter, interval timer, pinball, a starfield.
+      Install them <strong>straight from the T‑Deck over Wi‑Fi</strong> with the Get Apps tile, or download
+      them here for the SD card. Anyone can write one and send it in.</p>
+    <div class="btnwrap" style="margin:0">
+      <a href="./apps.html"><button type="button">🕹️ Browse the apps</button></a>
+    </div>
+  </div>
 
   <!-- WHAT'S NEW (rendered from changelog.json) -->
   <div class="card" id="whatsnew" style="text-align:left">

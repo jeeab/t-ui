@@ -5,6 +5,13 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Remove apps from the device
+
+**2026.07.19.3** · 2026-07-19
+
+- Apps you've installed now have a Remove button in Get Apps - no more taking the SD card out to a computer to delete one. It asks before removing, because it deletes saved high scores and settings too.
+
+
 ## Real graphics for games
 
 **2026.07.19.2** · 2026-07-19
