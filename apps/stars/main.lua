@@ -1,8 +1,9 @@
 -- Starfield for T-UI ------------------------------------------------------------
--- Fly through 220 stars. Drag left/right to steer, tap to change speed.
+-- Fly through 220 stars. DRAG anywhere to steer left and right; let go and it
+-- straightens up. Tap the WARP button in the bottom-left corner to change speed.
 --
--- This one exists to show what the canvas can do: 220 moving stars, plus streaks,
--- is far past the 80-object ceiling of the screen.* API. Every star is a pixel drawn
+-- This one exists to show what the canvas can do: 220 moving stars plus streaks is
+-- far past the 80-object ceiling of the screen.* API. Every star is a pixel drawn
 -- straight into a frame buffer, so the whole thing is one object on screen.
 ----------------------------------------------------------------------------------
 local W, H = 320, 240
@@ -10,18 +11,23 @@ local CX, CY = W / 2, H / 2
 local COUNT = 220
 
 local stars = {}
-local speed = 1.0
-local drift = 0          -- steering, set by dragging
-local best = 0           -- furthest distance travelled
+local warp = 1           -- 1, 2 or 3
+local drift = 0          -- current steering
+local steerTo = 0        -- where dragging wants it
+local best = 0
 local travelled = 0
-local paused = false
+local hintUntil = 0
+local ok = false
 
-local function reseed(s, near)
-    -- x,y are direction from the centre; z is depth. Small z = close to your face.
+-- the warp button, bottom-left
+local BX, BY, BW, BH = 6, 202, 74, 32
+
+local function reseed(s, atFront)
+    -- x,y are a direction from the centre; z is depth (small z = right in your face).
+    -- At z = 1 the whole spread lands on screen, so new stars always appear.
     s.x = (math.random() - 0.5) * 2
     s.y = (math.random() - 0.5) * 2
-    s.z = near and (math.random() * 0.8 + 0.2) or 1.0
-    -- a few stars are brighter, which reads as depth
+    s.z = atFront and (math.random() * 0.8 + 0.2) or 1.0
     local shade = math.random()
     if shade > 0.92 then s.c = 0x9ad0ff
     elseif shade > 0.80 then s.c = 0xffe9a8
@@ -29,8 +35,8 @@ local function reseed(s, near)
 end
 
 function on_open()
-    if not canvas.begin() then
-        -- No frame buffer available: say so plainly rather than showing a black screen.
+    ok = canvas.begin()
+    if not ok then
         screen.label(1, 40, 110, "Canvas unavailable", 0xff453a)
         return
     end
@@ -39,64 +45,85 @@ function on_open()
         stars[i] = {}
         reseed(stars[i], true)
     end
+    -- controls are not obvious on a blank starfield; say so for the first few seconds
+    hintUntil = device.time() + 5000
+    screen.label(2, 88, 8, "drag to steer", 0x8e8e93)
 end
 
-function on_touch()
-    paused = not paused
-    if not paused then
-        speed = speed + 0.5
-        if speed > 3.0 then speed = 1.0 end
+-- A tap only does something in the warp button. Everywhere else belongs to steering —
+-- and note a drag BEGINS with a touch, so anything global here would fire mid-steer.
+function on_touch(x, y)
+    if not ok then return end
+    if x >= BX and x <= BX + BW and y >= BY and y <= BY + BH then
+        warp = warp + 1
+        if warp > 3 then warp = 1 end
+        device.beep()
     end
-    device.beep()
 end
 
 function on_drag(x)
-    -- steer: how far the finger is from the middle
-    drift = (x - CX) / CX * 2.5
+    if not ok then return end
+    steerTo = (x - CX) / CX      -- -1 (hard left) .. +1 (hard right)
 end
 
 function on_tick()
-    if paused then return end
+    if not ok then return end
+
+    -- Ease towards where the finger is, and fall back to straight when it lets go.
+    -- Without the decay the field would keep turning forever after one drag.
+    drift = drift + (steerTo - drift) * 0.18
+    steerTo = steerTo * 0.90
 
     canvas.clear(0x000000)
 
+    local speed = warp * 0.012
     for i = 1, COUNT do
         local s = stars[i]
         local pz = s.z
-        s.z = s.z - 0.012 * speed
+        s.z = s.z - speed
         if s.z <= 0.02 then
             reseed(s, false)
             pz = s.z
         end
 
-        s.x = s.x + drift * 0.0009 / s.z
+        s.x = s.x + drift * 0.0016 / s.z
 
         local px = CX + (s.x / s.z) * CX
         local py = CY + (s.y / s.z) * CY
 
         if px < 0 or px >= W or py < 0 or py >= H then
             reseed(s, false)
-        else
+        elseif s.z < 0.35 then
             -- close stars get a motion streak back towards where they came from
-            if s.z < 0.35 then
-                local ox = CX + (s.x / pz) * CX
-                local oy = CY + (s.y / pz) * CY
-                canvas.line(math.floor(ox), math.floor(oy), math.floor(px), math.floor(py), s.c)
-            else
-                canvas.pixel(math.floor(px), math.floor(py), s.c)
-            end
+            local ox = CX + (s.x / pz) * CX
+            local oy = CY + (s.y / pz) * CY
+            canvas.line(math.floor(ox), math.floor(oy), math.floor(px), math.floor(py), s.c)
+        else
+            canvas.pixel(math.floor(px), math.floor(py), s.c)
         end
     end
 
-    travelled = travelled + speed
-    if travelled > best then
-        best = travelled
-        if travelled % 500 < speed then store.write("best.txt", tostring(math.floor(best))) end
+    -- warp button, drawn on the canvas so it can't eat into the element budget
+    canvas.rect(BX, BY, BW, BH, 0x1c1c20)
+    canvas.rect(BX, BY, BW, 2, 0x30d158)
+    for i = 1, warp do
+        canvas.rect(BX + 8 + (i - 1) * 14, BY + 12, 10, 10, 0x30d158)
     end
 
     canvas.flip()
+
+    if hintUntil > 0 and device.time() > hintUntil then
+        hintUntil = 0
+        screen.hide(2)
+    end
+
+    travelled = travelled + warp
+    if travelled > best then
+        best = travelled
+        if travelled % 500 < warp then store.write("best.txt", tostring(math.floor(best))) end
+    end
 end
 
 function on_close()
-    store.write("best.txt", tostring(math.floor(best)))
+    if ok then store.write("best.txt", tostring(math.floor(best))) end
 end
