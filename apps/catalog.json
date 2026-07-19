@@ -80,7 +80,7 @@
       "kind": "game",
       "desc": "Explore a galaxy: 16-point compass, map, wrecks, pirates, stations.",
       "ver": "11",
-      "bytes": 32949,
+      "bytes": 32157,
       "url": "apps/stars/main.lua"
     }
   ]
