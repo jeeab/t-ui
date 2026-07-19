@@ -30,7 +30,22 @@ local seed = 20260719
 -- instant you tap - there is no drifting or coasting round. look is the VIEW angle,
 -- which eases over to meet the heading; that lag is the swing you actually see. turn is
 -- how fast the view is swinging, and only drives the picture (star sweep, ship bank).
-local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1, hp = 100, maxhp = 100}
+-- Shields sit in front of the hull and come back on their own, so a scrape you fly away
+-- from costs you nothing but time. The HULL is the expensive part: it only comes back at
+-- a station, and only if you have Parts. That's what makes a bad fight actually matter.
+local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1,
+              hp = 100, maxhp = 100, sh = 50, maxsh = 50}
+local SHIELD_REGEN_MS = 900      -- one point per this long, once you've been left alone
+local SHIELD_CALM_MS = 3000      -- how long since the last hit before it starts coming back
+local REPAIR_COST = 10           -- Parts for a full hull repair
+local SALVAGE_PARTS = 5          -- Parts per derelict
+local MISSILE_COST = 10          -- credits per missile - exactly one pirate's bounty
+local PIRATE_BOUNTY = 10         -- credits per kill
+local PARTS_PACK = 5             -- Parts you get for buying a pack at a station
+local PARTS_COST = 40            -- deliberately poor value: a way out, not a shortcut
+local PIRATE_PARTS = 2           -- salvaged off a kill, when a kill gives anything
+local PIRATE_PARTS_CHANCE = 0.34 -- how often a wreck is worth stripping
+local lastRegen = 0
 local stars = {}
 local ok = false
 local hint = 0
@@ -42,13 +57,24 @@ local pirates = {}
 local shots = {}
 local missiles = 3
 local credits = 0
+local parts = 0              -- salvaged from derelicts; the only thing that repairs a hull
 local lastFire, lastHit = 0, 0
-local MAX_PIRATES = 3
 local incoming = {}          -- pirate shots on their way to you, so you can SEE them coming
+local blasts = {}            -- pirate death explosions: world position + when it started
 local docked, dockedOn = false, nil
+local dockedWreck = nil      -- the derelict we're alongside, so Salvage knows what to strip
 local hitFrom = 0            -- bearing of the last hit, so the flash shows WHERE from
 local showMap = false
+-- One popup line, shared by station names and pickups. Sharing it means a "+2 PARTS"
+-- never fights a station name for the same strip of screen, and the newest thing to
+-- happen is always the thing you're being told about.
+local popText, popUntil = nil, 0
+local nameShown = nil                 -- the station we last announced, so we only do it once
 local salvaged = {}          -- "sx,sy" of hulks already stripped; bounded, saved with the game
+
+local function popup(t, ms)
+    popText, popUntil = t, device.time() + (ms or 2600)
+end
 
 local function salvageKey(sx, sy) return sx .. "," .. sy end
 
@@ -76,14 +102,32 @@ local function hash(sx, sy, salt)
     return (h ~ (h >> 16)) & 0x7FFFFFFF
 end
 
--- What's in a sector? Roughly one station in six, at a fixed spot inside it.
+-- Station names. Built from the sector hash, so a station has the SAME name every time
+-- you find it, on any device, without a single byte being stored. Naming the places you
+-- visit is what turns a coordinate into somewhere you remember going.
+local NAME_A = {"Vor", "Zan", "Kal", "Neb", "Ish", "Tar", "Ory", "Xen",
+                "Cru", "Mal", "Sil", "Dra", "Ael", "Qir", "Hro", "Umb"}
+local NAME_B = {"an", "ex", "is", "or", "ux", "ai", "en", "yr"}
+local NAME_C = {"Station", "Outpost", "Anchorage", "Reach", "Terminal",
+                "Halo", "Spire", "Deepdock"}
+
+local function stationName(sx, sy)
+    local h = hash(sx, sy, 21)
+    return NAME_A[(h % 16) + 1] .. NAME_B[((h >> 5) % 8) + 1]
+           .. " " .. NAME_C[((h >> 9) % 8) + 1]
+end
+
+-- What's in a sector? Stations are deliberately uncommon - about one sector in twelve.
+-- They were one in six and that made them ordinary; you want to be pleased to find one.
 local function stationIn(sx, sy)
     local h = hash(sx, sy, 1)
-    if h % 6 ~= 0 then return nil end
+    if h % 12 ~= 0 then return nil end
     return {
         x = sx * SECTOR + (h >> 4) % SECTOR,
         y = sy * SECTOR + (h >> 14) % SECTOR,
         sx = sx, sy = sy,
+        kind = (h >> 24) % 3,             -- which of the three station designs
+        name = stationName(sx, sy),
     }
 end
 
@@ -170,10 +214,21 @@ end
 -- ---- combat ------------------------------------------------------------------
 -- Pirates live in the same projected space as everything else: a bearing and a distance.
 -- Closing distance is what makes them threatening, so they always fly at you.
+-- How many raiders a region will field at once. Quiet space gets none; the worst places
+-- get five. Tying it to the danger rating means "this sector is nasty" is something you
+-- can actually feel arriving rather than just read off the map.
+local function maxPiratesHere()
+    local d = dangerAt(math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR))
+    if d < 62 then return 0 end
+    local n = 3 + math.floor((d - 62) / 13)
+    if n > 5 then n = 5 end
+    return n
+end
+
 local function spawnPirate()
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     if dangerAt(csx, csy) < 62 then return end          -- most space is quiet
-    if #pirates >= MAX_PIRATES then return end
+    if #pirates >= maxPiratesHere() then return end
     -- appear somewhere ahead-ish, far enough away to be seen coming
     local ang = ship.look + (math.random() - 0.5) * 2.2
     local dist = 1600 + math.random() * 900
@@ -217,8 +272,18 @@ local function stepShots(dt)
                     p.hp = p.hp - (sh.kind == "laser" and 1 or 3)
                     hit = true
                     if p.hp <= 0 then
+                        -- Leave a blast behind at the pirate's own position, so the kill
+                        -- happens out there in the world and stays put as you fly past it.
+                        blasts[#blasts + 1] = {x = p.x, y = p.y, born = device.time()}
                         table.remove(pirates, pi)
-                        credits = credits + 10
+                        credits = credits + PIRATE_BOUNTY
+                        -- Some wrecks are worth stripping. Deliberately less than a
+                        -- derelict pays, so fighting tops your Parts up but hunting
+                        -- derelicts is still the way to actually fund a repair.
+                        if math.random() < PIRATE_PARTS_CHANCE then
+                            parts = parts + PIRATE_PARTS
+                            popup("+" .. PIRATE_PARTS .. " PARTS", 1400)
+                        end
                         device.beep(true)
                     end
                     break
@@ -246,7 +311,15 @@ local function stepIncoming()
             -- the flash can tell you which way to turn instead of just "you're hit"
             hitFrom = angleDiff(math.atan(b.x - ship.x, b.y - ship.y), ship.heading)
             table.remove(incoming, i)
-            ship.hp = ship.hp - 6
+            -- Shields take it first and soak the whole hit if they can. Only what's left
+            -- over reaches the hull, which is the damage you'll have to pay Parts to undo.
+            local dmg = 6
+            if ship.sh > 0 then
+                local absorbed = math.min(ship.sh, dmg)
+                ship.sh = ship.sh - absorbed
+                dmg = dmg - absorbed
+            end
+            ship.hp = ship.hp - dmg
             lastHit = device.time()
             if ship.hp < 0 then ship.hp = 0 end
             device.beep(true)
@@ -279,13 +352,15 @@ local function stepPirates()
     end
 end
 
--- Stop next to a station and it patches you up. Braking is what docks you, which gives
--- the throttle a purpose beyond going fast, and gives credits somewhere to go.
+-- Braking is what docks you, which gives the throttle a purpose beyond going fast.
+-- Nothing happens automatically any more: docking OFFERS you buttons and you choose.
+-- Salvage used to fire off silently the moment you drifted close enough, which meant the
+-- best moment in the game happened without you doing anything.
 local function stepDocking()
-    docked, dockedOn = false, nil
+    docked, dockedOn, dockedWreck = false, nil, nil
     if ship.warp > 0 then return end          -- you dock by stopping
 
-    -- A derelict close by? Strip it once, then it's an empty hull forever after.
+    -- A derelict close by? Offer to strip it. Each hull can only be stripped once.
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     for sx = csx - 1, csx + 1 do
         for sy = csy - 1, csy + 1 do
@@ -293,43 +368,102 @@ local function stepDocking()
             if w then
                 local dx, dy = w.x - ship.x, w.y - ship.y
                 if math.sqrt(dx * dx + dy * dy) < 380 then
-                    docked, dockedOn = true, "wreck"
-                    if not isSalvaged(sx, sy) then
-                        markSalvaged(sx, sy)
-                        local loot = 25 + (hash(sx, sy, 5) % 40)
-                        credits = credits + loot
-                        if hash(sx, sy, 9) % 3 == 0 and missiles < 6 then missiles = missiles + 1 end
-                        device.beep(true)
-                    end
+                    docked, dockedOn, dockedWreck = true, "wreck", w
                     return
                 end
             end
         end
     end
 
-    -- Otherwise a station: repair for free, missiles for money (tap to buy).
-    -- Generous on purpose. Steering in 22.5 degree steps means you can be up to half a
-    -- point off the true bearing, so a long straight run passes to one side rather than
-    -- dead through. A wide berth makes "point at it and fly" reliably arrive, which is
-    -- the whole promise of a compass you can actually steer by.
+    -- Otherwise a station. The dock radius is generous on purpose: steering in 22.5
+    -- degree steps means you can be up to half a point off the true bearing, so a long
+    -- straight run passes to one side rather than dead through. A wide berth makes
+    -- "point at it and fly" reliably arrive, which is the whole promise of a compass
+    -- you can actually steer by.
     if nearest and nearestDist <= 420 then
         docked, dockedOn = true, "station"
-        if ship.hp < ship.maxhp then
-            ship.hp = ship.hp + 1
-            if ship.hp > ship.maxhp then ship.hp = ship.maxhp end
-            if ship.hp % 20 == 0 then device.beep() end
-        end
     end
+end
+
+-- Repairing the hull is the one thing Parts are for, and it's instant rather than the
+-- old slow drip - you came all this way, you shouldn't then sit and wait.
+local function repairHull()
+    if not docked or dockedOn ~= "station" then return false end
+    if ship.hp >= ship.maxhp or parts < REPAIR_COST then return false end
+    parts = parts - REPAIR_COST
+    ship.hp = ship.maxhp
+    device.beep(true)
+    return true
 end
 
 -- The station shop: one tap, one missile, while you're stopped alongside.
 local function buyMissile()
     if not docked or dockedOn ~= "station" then return false end
-    if credits < 20 or missiles >= 6 then return false end
-    credits = credits - 20
+    if credits < MISSILE_COST or missiles >= 6 then return false end
+    credits = credits - MISSILE_COST
     missiles = missiles + 1
     device.beep(true)
     return true
+end
+
+-- Buying Parts is the way out of a dead end: hull wrecked, no Parts, no derelict in
+-- reach. The rate is bad on purpose (8 credits a Part against free from a hulk) so it
+-- rescues you without ever being the sensible way to stock up.
+local function buyParts()
+    if not docked or dockedOn ~= "station" then return false end
+    if credits < PARTS_COST then return false end
+    credits = credits - PARTS_COST
+    parts = parts + PARTS_PACK
+    popup("+" .. PARTS_PACK .. " PARTS", 1400)
+    device.beep(true)
+    return true
+end
+
+-- Salvage: now a button you press, and the payout is Parts rather than credits, because
+-- Parts are what keep your hull alive. Wrecks are the reason to leave the shipping lanes.
+local function salvageWreck()
+    if not docked or dockedOn ~= "wreck" or not dockedWreck then return false end
+    local w = dockedWreck
+    if isSalvaged(w.sx, w.sy) then return false end
+    markSalvaged(w.sx, w.sy)
+    parts = parts + SALVAGE_PARTS
+    credits = credits + 25 + (hash(w.sx, w.sy, 5) % 40)
+    if hash(w.sx, w.sy, 9) % 3 == 0 and missiles < 6 then missiles = missiles + 1 end
+    w.done = true
+    device.beep(true)
+    return true
+end
+
+-- What you can actually do while docked. ONE list, read by both the drawing code and the
+-- touch handler, so a button can never appear somewhere it isn't tappable (or worse, be
+-- tappable where nothing is drawn). Sits in the middle band, clear of the turn thirds at
+-- the screen edges and the throttle strip along the bottom.
+local BTN_X, BTN_W, BTN_H = 92, 136, 26
+local BTN_SLOT = {20, 21, 22}          -- label ids, well clear of the HUD's own slots
+local function dockButtons()
+    local b = {}
+    if not docked then return b end
+    if dockedOn == "station" then
+        if ship.hp < ship.maxhp then
+            b[#b + 1] = {text = "REPAIR " .. REPAIR_COST .. "p", act = repairHull,
+                         on = parts >= REPAIR_COST}
+        end
+        if missiles < 6 then
+            b[#b + 1] = {text = "REARM " .. MISSILE_COST .. "c", act = buyMissile,
+                         on = credits >= MISSILE_COST}
+        end
+        b[#b + 1] = {text = "BUY " .. PARTS_PACK .. "p " .. PARTS_COST .. "c",
+                     act = buyParts, on = credits >= PARTS_COST}
+    elseif dockedOn == "wreck" and dockedWreck and not isSalvaged(dockedWreck.sx, dockedWreck.sy) then
+        b[#b + 1] = {text = "SALVAGE +" .. SALVAGE_PARTS .. "p", act = salvageWreck, on = true}
+    end
+    -- Stacked below the popup line (y 44) and above the DOCKED caption (y 152) and the
+    -- ship itself (y 170). Three is the most ever offered, at a station with a damaged
+    -- hull and room for missiles.
+    for i, btn in ipairs(b) do
+        btn.x, btn.y, btn.w, btn.h = BTN_X, 62 + (i - 1) * (BTN_H + 4), BTN_W, BTN_H
+    end
+    return b
 end
 
 -- ---- save --------------------------------------------------------------------
@@ -337,7 +471,8 @@ end
 local function save()
     -- ship state, then the wrecks already stripped. Still tiny: the galaxy is generated.
     store.write("save.txt", table.concat({seed, math.floor(ship.x), math.floor(ship.y),
-                                          math.floor(ship.heading * 180 / math.pi), ship.hp, credits, missiles}, ",")
+                                          math.floor(ship.heading * 180 / math.pi), ship.hp, credits,
+                                          missiles, parts, math.floor(ship.sh)}, ",")
                             .. ";" .. table.concat(salvaged, " "))
 end
 
@@ -360,6 +495,11 @@ local function restore()
         ship.heading = snapHeading((v[4] or 0) * math.pi / 180)
         credits = v[6] or 0
         missiles = v[7] or 3
+        -- Saves from before Parts and shields existed simply don't have these fields, so
+        -- they fall back to sensible starting values rather than loading as zero.
+        parts = v[8] or 0
+        ship.sh = v[9] or ship.maxsh
+        if ship.sh > ship.maxsh then ship.sh = ship.maxsh end
         ship.look = ship.heading
     end
 end
@@ -404,6 +544,7 @@ function on_touch(x, y)
     if not ok then return end
     if ship.hp <= 0 then                      -- respawn: keep credits, lose the run
         ship.hp = ship.maxhp
+        ship.sh = ship.maxsh
         ship.warp = 1
         pirates = {}
         shots = {}
@@ -411,9 +552,16 @@ function on_touch(x, y)
         return
     end
     if showMap then showMap = false; return end     -- any tap closes the map
-    if docked and dockedOn == "station" and y < 200 then
-        if buyMissile() then return end
+
+    -- Dock buttons win over steering: they're only on screen while you're stopped, and a
+    -- tap that lands on one should never also swing the ship round.
+    for _, b in ipairs(dockButtons()) do
+        if x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h then
+            if b.on then b.act() else device.beep() end
+            return
+        end
     end
+
     if y > 200 then                     -- bottom strip: slower on the left, faster on the right
         if x < 160 then setWarp(ship.warp - 1) else setWarp(ship.warp + 1) end
     elseif x < 90 then turn(-1)
@@ -521,19 +669,45 @@ local PIRATE_ART =
     " F     F "
 local PIRATE_PAL = {["R"] = 0xff453a, ["W"] = 0x8a1f18, ["C"] = 0xffe9a8, ["F"] = 0xff9f0a}
 
--- Station, 11x9: a ring with a lit core.
+-- Stations, 11x9. Built out of steel rather than glowing blue: plate (S), shadowed plate
+-- (D) and structural dark (K), with lit windows (W) and a beacon (C) so they still read
+-- as inhabited at a distance. Three designs, picked by the sector hash, so the same
+-- station always looks the same but the galaxy isn't full of identical rings.
 local STATION_W = 11
-local STATION_ART =
-    "   BBBBB   " ..
-    "  BB   BB  " ..
-    " BB     BB " ..
-    "BB  CCC  BB" ..
-    "B   CWC   B" ..
-    "BB  CCC  BB" ..
-    " BB     BB " ..
-    "  BB   BB  " ..
-    "   BBBBB   "
-local STATION_PAL = {["B"] = 0x0a84ff, ["C"] = 0x9ad0ff, ["W"] = 0xffffff}
+local STATION_ART = {
+    -- ring station: a wheel with a lit hub
+    "   SSSSS   " ..
+    "  SD   DS  " ..
+    " SD  W  DS " ..
+    "SD  DKD  DS" ..
+    "S  WKCKW  S" ..
+    "SD  DKD  DS" ..
+    " SD  W  DS " ..
+    "  SD   DS  " ..
+    "   SSSSS   ",
+    -- spindle station: a long axis with docking arms
+    "    SDS    " ..
+    "   SDKDS   " ..
+    " S SDWDS S " ..
+    "SSSSDKDSSSS" ..
+    "SDWDKCKDWDS" ..
+    "SSSSDKDSSSS" ..
+    " S SDWDS S " ..
+    "   SDKDS   " ..
+    "    SDS    ",
+    -- platform station: a slab yard, lights along both decks
+    "  SSSSSSS  " ..
+    " SDDDDDDDS " ..
+    "SDWDSDSDWDS" ..
+    "SDDDDKDDDDS" ..
+    "SSSSDCDSSSS" ..
+    "SDDDDKDDDDS" ..
+    "SDWDSDSDWDS" ..
+    " SDDDDDDDS " ..
+    "  SSSSSSS  ",
+}
+local STATION_PAL = {["S"] = 0x9aa3ad, ["D"] = 0x6b737c, ["K"] = 0x3f454b,
+                     ["W"] = 0xffe9a8, ["C"] = 0x0a84ff}
 
 -- Derelict hulk, 9x7: a broken station, dark and lopsided.
 local WRECK_W = 9
@@ -580,7 +754,8 @@ function on_tick()
     -- which is why M appeared to do nothing at all.)
     if showMap then
         drawMap()
-        for i = 2, 9 do screen.hide(i) end   -- text would float over the chart
+        for i = 2, 12 do screen.hide(i) end  -- text would float over the chart
+        for _, s in ipairs(BTN_SLOT) do screen.hide(s) end
         return
     end
 
@@ -633,6 +808,20 @@ function on_tick()
     stepIncoming()
     stepDocking()
 
+    -- Shields creep back once nobody has hit you for a few seconds. Free, but slow enough
+    -- that running away to heal is a real decision rather than an obvious one.
+    local nowMs = device.time()
+    if ship.sh < ship.maxsh and nowMs - lastHit > SHIELD_CALM_MS
+       and nowMs - lastRegen > SHIELD_REGEN_MS then
+        ship.sh = ship.sh + 1
+        lastRegen = nowMs
+    end
+
+    -- Retire finished explosions.
+    for i = #blasts, 1, -1 do
+        if nowMs - blasts[i].born > 520 then table.remove(blasts, i) end
+    end
+
     -- Shots: a bright dot flying away from you, shrinking as it goes.
     for _, sh in ipairs(shots) do
         local rel = angleDiff(sh.ang, ship.look)
@@ -672,6 +861,41 @@ function on_tick()
         end
     end
 
+    -- Explosions: a bright core that punches outward and fades through orange to red as
+    -- it goes, with debris flung out around it. Sits in the world at the spot the pirate
+    -- died, so it stays put and slides past properly as you keep flying.
+    for _, b in ipairs(blasts) do
+        local px, dist = project(b.x, b.y)
+        if px and dist < 4000 then
+            local age = (device.time() - b.born) / 520        -- 0 -> 1 over its life
+            if age < 0 then age = 0 end
+            local sc = math.floor(2200 / math.max(dist, 60))
+            if sc < 1 then sc = 1 end
+            if sc > 7 then sc = 7 end
+            local r = math.floor((3 + age * 16) * sc / 2)
+            local col = (age < 0.25 and 0xffffff) or (age < 0.5 and 0xffe9a8)
+                        or (age < 0.75 and 0xff9f0a) or 0xff453a
+            -- ring: four blocks pushed out from the centre rather than a real circle,
+            -- which is cheap and reads correctly at these sizes
+            local t = math.max(2, math.floor(sc * 1.5))
+            canvas.rect(px - r, CY - t / 2, r * 2, t, col)
+            canvas.rect(px - t / 2, CY - r, t, r * 2, col)
+            if age < 0.55 then
+                local c = math.floor(r * 0.7)
+                canvas.rect(px - c / 2, CY - c / 2, c, c, age < 0.3 and 0xffffff or 0xffe9a8)
+            end
+            -- debris, thrown out along the diagonals
+            if age > 0.15 then
+                local d = math.floor(r * 0.8)
+                local ds = math.max(1, sc)
+                canvas.rect(px - d, CY - d, ds, ds, 0xff9f0a)
+                canvas.rect(px + d, CY - d, ds, ds, 0xff9f0a)
+                canvas.rect(px - d, CY + d, ds, ds, 0xff453a)
+                canvas.rect(px + d, CY + d, ds, ds, 0xff453a)
+            end
+        end
+    end
+
     -- Stations, drawn where they actually are relative to where we're looking.
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     for sx = csx - 2, csx + 2 do
@@ -684,7 +908,7 @@ function on_tick()
                     if sc < 1 then sc = 1 end
                     if sc > 6 then sc = 6 end
                     canvas.sprite(px - (STATION_W * sc) / 2, CY - (9 * sc) / 2,
-                                  STATION_W, STATION_ART, STATION_PAL, sc)
+                                  STATION_W, STATION_ART[st.kind + 1], STATION_PAL, sc)
                 end
             end
         end
@@ -716,12 +940,19 @@ function on_tick()
     for i = 1, ship.warp do canvas.rect(6 + (i - 1) * 9, H - 16, 6, 10, 0x30d158) end
     if ship.warp == 0 then canvas.rect(6, H - 16, 24, 10, 0xff453a) end
 
-    -- Health bar. Colour shifts as it drops so you feel it going without reading a number.
+    -- Two bars, stacked: shields on top in blue, hull underneath. Keeping them separate
+    -- and adjacent is the whole point - you can see at a glance whether the damage you
+    -- just took will heal itself or is going to cost you Parts.
+    local shFrac = ship.sh / ship.maxsh
+    canvas.rect(120, H - 20, 90, 5, 0x2c2c2e)
+    if shFrac > 0 then
+        canvas.rect(120, H - 20, math.floor(90 * shFrac), 5, 0x0a84ff)
+    end
     local frac = ship.hp / ship.maxhp
     local barW = math.floor(90 * frac)
-    canvas.rect(120, H - 16, 90, 10, 0x2c2c2e)
+    canvas.rect(120, H - 13, 90, 7, 0x2c2c2e)
     if barW > 0 then
-        canvas.rect(120, H - 16, barW, 10,
+        canvas.rect(120, H - 13, barW, 7,
                     frac > 0.6 and 0x30d158 or (frac > 0.3 and 0xffd60a or 0xff453a))
     end
     -- missiles remaining, as pips
@@ -740,6 +971,15 @@ function on_tick()
         else
             canvas.rect(0, H - 26, W, 4, 0xff453a)              -- from behind
         end
+    end
+
+    -- Dock buttons, drawn from the same list the touch handler reads. A button you can't
+    -- afford still shows, greyed - "REPAIR 10p" when you have 4 Parts tells you what to
+    -- go and do, where hiding it would just look like the station was broken.
+    for _, b in ipairs(dockButtons()) do
+        canvas.rect(b.x, b.y, b.w, b.h, b.on and 0x1c3a5e or 0x24242a)
+        canvas.rect(b.x, b.y, b.w, 2, b.on and 0x0a84ff or 0x3a3a42)
+        canvas.rect(b.x, b.y + b.h - 2, b.w, 2, b.on and 0x0a84ff or 0x3a3a42)
     end
 
     canvas.flip()
@@ -762,13 +1002,46 @@ function on_tick()
         screen.label(5, 8, H - 40, "no station in range", 0x4a4a52)
     end
 
-    screen.label(6, 250, H - 40, credits .. "c", 0xffd60a)
+    -- Both currencies together: credits buy missiles, Parts fix hulls.
+    screen.label(6, 228, H - 40, credits .. "c  " .. parts .. "p", 0xffd60a)
+
+    -- Station name, announced as you come up on one and then gone again. Only fires when
+    -- the station you're nearest to CHANGES, so it greets you on arrival instead of
+    -- sitting there blinking at you the whole time you're parked.
+    local nowT = device.time()
+    if nearest and nearestDist < 1400 then
+        if nameShown ~= nearest.name then
+            nameShown = nearest.name
+            popup(nearest.name, 3500)
+        end
+    elseif not nearest or nearestDist > 2200 then
+        nameShown = nil                       -- left the area; greet it again next time
+    end
+    if popText and nowT < popUntil then
+        screen.label(12, math.floor((W - #popText * 7) / 2), 44, popText, 0x9ad0ff)
+    else
+        screen.hide(12)
+    end
 
     if docked then
-        screen.label(9, 96, 60, ship.hp < ship.maxhp and "DOCKED - repairing" or
-                     (missiles < 3 and credits >= 20 and "DOCKED - rearming" or "DOCKED"), 0x30d158)
+        local cap = dockedOn == "wreck" and "DERELICT" or "DOCKED"
+        screen.label(9, math.floor((W - #cap * 7) / 2), 152, cap, 0x30d158)
     else
         screen.hide(9)
+    end
+
+    -- Button captions ride on top of the boxes drawn on the canvas, and every reserved
+    -- slot gets hidden when there's nothing to offer - otherwise a caption from the last
+    -- station you visited would still be sitting there in open space.
+    local btns = dockButtons()
+    for i, slot in ipairs(BTN_SLOT) do
+        local b = btns[i]
+        if b then
+            screen.label(slot, b.x + math.floor((b.w - #b.text * 7) / 2), b.y + 7, b.text,
+                         b.on and 0xffffff or 0x6a6a72)
+        else
+            screen.hide(slot)
+        end
     end
 
     -- Destroyed: stop, say so, and let a tap start again. Losing has to be legible.
