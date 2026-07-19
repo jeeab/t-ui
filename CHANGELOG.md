@@ -5,6 +5,14 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Room for bigger games
+
+**2026.07.19.11** · 2026-07-19
+
+- Apps can now be up to 48 KB instead of 16 KB, so a full game fits.
+- Deep Space: the starfield is now a galaxy you can explore - a compass heading, coordinates, generated stations you can fly back to, pirates to fight or outrun, health, credits and a saved game.
+
+
 ## Keyboard, sprites, smoother maps
 
 **2026.07.19.10** · 2026-07-19

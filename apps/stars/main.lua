@@ -3,6 +3,7 @@
 --
 --   A / D  (or left/right)  turn 45 degrees        W / space  faster
 --   B                       brake (stars stop)     tap sides  turn
+--   L                       laser (weak, free)     P          phoenix missile
 --
 -- The galaxy is NOT stored anywhere. Every sector's contents come from a hash of its
 -- coordinates and the world seed, so space is effectively infinite, costs no memory,
@@ -22,6 +23,16 @@ local ship = {x = 0, y = 0, heading = 0, look = 0, warp = 1, hp = 100, maxhp = 1
 local stars = {}
 local ok = false
 local hint = 0
+
+-- Combat. Pirates are spawned live around the ship rather than stored: their DENSITY
+-- comes from the sector's danger rating, so some regions are genuinely lawless and you
+-- learn which. Nothing about them needs saving.
+local pirates = {}
+local shots = {}
+local missiles = 3
+local credits = 0
+local lastFire, lastHit = 0, 0
+local MAX_PIRATES = 4
 
 -- Deterministic hash of a sector. Same inputs always give the same number, which is
 -- what lets the galaxy exist without being stored. Integer maths only - floats would
@@ -98,11 +109,96 @@ local function reseed(s, front)
     if sh > 0.92 then s.c = 0x9ad0ff elseif sh > 0.80 then s.c = 0xffe9a8 else s.c = 0xffffff end
 end
 
+-- ---- combat ------------------------------------------------------------------
+-- Pirates live in the same projected space as everything else: a bearing and a distance.
+-- Closing distance is what makes them threatening, so they always fly at you.
+local function spawnPirate()
+    local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
+    if dangerAt(csx, csy) < 45 then return end          -- quiet region, nothing out here
+    if #pirates >= MAX_PIRATES then return end
+    -- appear somewhere ahead-ish, far enough away to be seen coming
+    local ang = ship.look + (math.random() - 0.5) * 2.2
+    local dist = 1600 + math.random() * 900
+    pirates[#pirates + 1] = {
+        x = ship.x + math.sin(ang) * dist,
+        y = ship.y + math.cos(ang) * dist,
+        hp = 3,
+        cool = 800 + math.random() * 1500,
+    }
+end
+
+local function fire(kind)
+    local now = device.time()
+    if now - lastFire < (kind == "laser" and 220 or 700) then return end
+    if kind == "missile" then
+        if missiles <= 0 then return end
+        missiles = missiles - 1
+    end
+    lastFire = now
+    shots[#shots + 1] = {kind = kind, dist = 0, ang = ship.look, born = now}
+    device.beep(kind == "missile")
+end
+
+-- A shot travels straight out along the heading it was fired on. It hits if, by the time
+-- it reaches a pirate's distance, they're still close together in bearing.
+local function stepShots(dt)
+    local i = 1
+    while i <= #shots do
+        local sh = shots[i]
+        sh.dist = sh.dist + (sh.kind == "laser" and 260 or 120)
+        local hit = false
+        for pi = #pirates, 1, -1 do
+            local p = pirates[pi]
+            local dx, dy = p.x - ship.x, p.y - ship.y
+            local pd = math.sqrt(dx * dx + dy * dy)
+            if math.abs(pd - sh.dist) < 220 then
+                local rel = angleDiff(math.atan(dx, dy), sh.ang)
+                if math.abs(rel) < 0.18 then
+                    p.hp = p.hp - (sh.kind == "laser" and 1 or 3)
+                    hit = true
+                    if p.hp <= 0 then
+                        table.remove(pirates, pi)
+                        credits = credits + 10
+                        device.beep(true)
+                    end
+                    break
+                end
+            end
+        end
+        if hit or sh.dist > 3000 then table.remove(shots, i) else i = i + 1 end
+    end
+end
+
+local function stepPirates()
+    local now = device.time()
+    for pi = #pirates, 1, -1 do
+        local p = pirates[pi]
+        local dx, dy = p.x - ship.x, p.y - ship.y
+        local d = math.sqrt(dx * dx + dy * dy)
+        if d > 5000 then
+            table.remove(pirates, pi)                    -- outrun: warping away works
+        else
+            -- close in
+            local step = 3
+            p.x = p.x - (dx / d) * step
+            p.y = p.y - (dy / d) * step
+            -- and shoot when near enough, but only if roughly in front of you
+            if d < 1400 and now > (p.lastShot or 0) + p.cool then
+                p.lastShot = now
+                ship.hp = ship.hp - 4
+                lastHit = now
+                device.beep()
+                if ship.hp < 0 then ship.hp = 0 end
+            end
+        end
+    end
+end
+
 -- ---- save --------------------------------------------------------------------
 -- Tiny, because the galaxy is generated rather than stored: just where we are.
 local function save()
     store.write("save.txt", table.concat({seed, math.floor(ship.x), math.floor(ship.y),
-                                          ship.heading, ship.hp}, ","))
+                                          ship.heading, ship.hp, credits, missiles}, ","))
 end
 
 local function restore()
@@ -112,6 +208,8 @@ local function restore()
     for n in s:gmatch("-?%d+") do v[#v + 1] = tonumber(n) end
     if #v >= 5 then
         seed, ship.x, ship.y, ship.heading, ship.hp = v[1], v[2], v[3], v[4], v[5]
+        credits = v[6] or 0
+        missiles = v[7] or 3
         ship.look = headingAngle(ship.heading)
     end
 end
@@ -134,11 +232,21 @@ function on_key(k)
     elseif k == "b" then setWarp(0)
     elseif k == "w" or k == " " or k == "enter" then
         setWarp(ship.warp >= 3 and 1 or ship.warp + 1)
+    elseif k == "l" then fire("laser")
+    elseif k == "p" then fire("missile")
     end
 end
 
 function on_touch(x, y)
     if not ok then return end
+    if ship.hp <= 0 then                      -- respawn: keep credits, lose the run
+        ship.hp = ship.maxhp
+        ship.warp = 1
+        pirates = {}
+        shots = {}
+        save()
+        return
+    end
     if y > 200 then                     -- bottom strip: speed / brake
         if x < 80 then setWarp(0) else setWarp(ship.warp >= 3 and 1 or ship.warp + 1) end
     elseif x < 90 then turn(-1)
@@ -233,6 +341,39 @@ function on_tick()
         end
     end
 
+    -- Combat runs every frame. Pirates only appear in lawless regions, which is what
+    -- makes the danger rating something you can learn rather than random punishment.
+    if math.random() < 0.012 then spawnPirate() end
+    stepPirates()
+    stepShots()
+
+    -- Shots: a bright dot flying away from you, shrinking as it goes.
+    for _, sh in ipairs(shots) do
+        local rel = angleDiff(sh.ang, ship.look)
+        if rel > -FOV and rel < FOV then
+            local sx = CX + (rel / FOV) * CX
+            local shrink = 1 - (sh.dist / 3000)
+            if shrink < 0.05 then shrink = 0.05 end
+            local sz = math.floor((sh.kind == "laser" and 3 or 5) * shrink) + 1
+            local sy = CY + 40 * shrink
+            canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz,
+                        sh.kind == "laser" and 0x30d158 or 0xff9f0a)
+        end
+    end
+
+    -- Pirates: red, growing as they close on you.
+    for _, pr in ipairs(pirates) do
+        local px, dist = project(pr.x, pr.y)
+        if px and dist < 3000 then
+            local size = math.floor(700 / dist * 16)
+            if size < 3 then size = 3 end
+            if size > 46 then size = 46 end
+            local y = CY - size / 2
+            canvas.rect(px - size / 2, y, size, size, 0xff453a)
+            canvas.rect(px - size / 4, y + size / 4, size / 2, size / 4, 0x3a0f0d)
+        end
+    end
+
     -- Stations, drawn where they actually are relative to where we're looking.
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     for sx = csx - 2, csx + 2 do
@@ -265,6 +406,23 @@ function on_tick()
     for i = 1, ship.warp do canvas.rect(6 + (i - 1) * 9, H - 16, 6, 10, 0x30d158) end
     if ship.warp == 0 then canvas.rect(6, H - 16, 24, 10, 0xff453a) end
 
+    -- Health bar. Colour shifts as it drops so you feel it going without reading a number.
+    local frac = ship.hp / ship.maxhp
+    local barW = math.floor(90 * frac)
+    canvas.rect(120, H - 16, 90, 10, 0x2c2c2e)
+    if barW > 0 then
+        canvas.rect(120, H - 16, barW, 10,
+                    frac > 0.6 and 0x30d158 or (frac > 0.3 and 0xffd60a or 0xff453a))
+    end
+    -- missiles remaining, as pips
+    for i = 1, missiles do canvas.rect(224 + (i - 1) * 8, H - 16, 5, 10, 0xff9f0a) end
+
+    -- Taking a hit flashes the edges red - unmissable without covering the view.
+    if device.time() - lastHit < 250 then
+        canvas.rect(0, 18, W, 3, 0xff453a)
+        canvas.rect(0, H - 25, W, 3, 0xff453a)
+    end
+
     canvas.flip()
 
     -- Text goes on labels, which are crisper than anything we can draw by hand.
@@ -279,6 +437,18 @@ function on_tick()
         screen.label(5, 8, H - 40, "station " .. math.floor(nearestDist) .. "  " .. arrow, 0x0a84ff)
     else
         screen.label(5, 8, H - 40, "no station in range", 0x4a4a52)
+    end
+
+    screen.label(6, 250, H - 40, credits .. "c", 0xffd60a)
+
+    -- Destroyed: stop, say so, and let a tap start again. Losing has to be legible.
+    if ship.hp <= 0 then
+        screen.label(7, 96, 100, "SHIP DESTROYED", 0xff453a)
+        screen.label(8, 92, 120, "tap to start again", 0x8e8e93)
+        ship.warp = 0
+    else
+        screen.hide(7)
+        screen.hide(8)
     end
 
     if hint > 0 and device.time() > hint then hint = 0; screen.hide(2) end

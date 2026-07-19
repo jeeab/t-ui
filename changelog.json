@@ -2,6 +2,15 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.11",
+      "date": "2026-07-19",
+      "title": "Room for bigger games",
+      "changes": [
+        "Apps can now be up to 48 KB instead of 16 KB, so a full game fits.",
+        "Deep Space: the starfield is now a galaxy you can explore - a compass heading, coordinates, generated stations you can fly back to, pirates to fight or outrun, health, credits and a saved game."
+      ]
+    },
+    {
       "version": "2026.07.19.10",
       "date": "2026-07-19",
       "title": "Keyboard, sprites, smoother maps",
