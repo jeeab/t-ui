@@ -76,11 +76,11 @@
     },
     {
       "id": "stars",
-      "name": "Starfield",
+      "name": "Deep Space",
       "kind": "game",
-      "desc": "Fly your ship through 220 stars. Drag or A/D to steer.",
-      "ver": "5",
-      "bytes": 6835,
+      "desc": "Fly an endless generated galaxy. A/D steer by compass, find stations.",
+      "ver": "6",
+      "bytes": 11108,
       "url": "apps/stars/main.lua"
     }
   ]
