@@ -1,9 +1,10 @@
 -- Starfield: Deep Space ---------------------------------------------------------
 -- Fly a ship through an endless, generated galaxy.
 --
---   A / D  (or left/right)  turn 45 degrees        W / space  faster
---   B                       brake (stars stop)     tap sides  turn
---   L                       laser (weak, free)     P          phoenix missile
+--   A / D  (or left/right)  turn 45 degrees        W  faster    S  slower/stop
+--   L  laser (weak, free)     P  phoenix missile     tap sides  turn
+--
+-- Brake to a stop next to a station and it repairs your hull and restocks missiles.
 --
 -- The galaxy is NOT stored anywhere. Every sector's contents come from a hash of its
 -- coordinates and the world seed, so space is effectively infinite, costs no memory,
@@ -33,6 +34,8 @@ local missiles = 3
 local credits = 0
 local lastFire, lastHit = 0, 0
 local MAX_PIRATES = 4
+local incoming = {}          -- pirate shots on their way to you, so you can SEE them coming
+local docked, dockMsg = false, 0
 
 -- Deterministic hash of a sector. Same inputs always give the same number, which is
 -- what lets the galaxy exist without being stored. Integer maths only - floats would
@@ -169,6 +172,28 @@ local function stepShots(dt)
     end
 end
 
+-- Enemy bolts close on you each frame. They only hurt when they arrive.
+local function stepIncoming()
+    for i = #incoming, 1, -1 do
+        local b = incoming[i]
+        b.dist = b.dist - 55
+        -- keep the bolt aimed at where you are now, so it tracks toward the ship
+        local dx, dy = b.x - ship.x, b.y - ship.y
+        local d = math.sqrt(dx * dx + dy * dy)
+        if d > 1 then
+            b.x = ship.x + (dx / d) * b.dist
+            b.y = ship.y + (dy / d) * b.dist
+        end
+        if b.dist <= 60 then
+            table.remove(incoming, i)
+            ship.hp = ship.hp - 6
+            lastHit = device.time()
+            if ship.hp < 0 then ship.hp = 0 end
+            device.beep(true)
+        end
+    end
+end
+
 local function stepPirates()
     local now = device.time()
     for pi = #pirates, 1, -1 do
@@ -182,15 +207,32 @@ local function stepPirates()
             local step = 3
             p.x = p.x - (dx / d) * step
             p.y = p.y - (dy / d) * step
-            -- and shoot when near enough, but only if roughly in front of you
-            if d < 1400 and now > (p.lastShot or 0) + p.cool then
+            -- Shoot something you can actually see coming, rather than damaging you out
+            -- of nowhere: the bolt is launched here and travels toward you over a second
+            -- or so, growing as it closes. Getting hit should never be a surprise.
+            if d < 1600 and now > (p.lastShot or 0) + p.cool then
                 p.lastShot = now
-                ship.hp = ship.hp - 4
-                lastHit = now
+                incoming[#incoming + 1] = {x = p.x, y = p.y, dist = d}
                 device.beep()
-                if ship.hp < 0 then ship.hp = 0 end
             end
         end
+    end
+end
+
+-- Stop next to a station and it patches you up. Braking is what docks you, which gives
+-- the throttle a purpose beyond going fast, and gives credits somewhere to go.
+local function stepDocking()
+    docked = false
+    if not nearest or nearestDist > 260 or ship.warp > 0 then return end
+    docked = true
+    if ship.hp < ship.maxhp then
+        ship.hp = ship.hp + 1
+        if ship.hp > ship.maxhp then ship.hp = ship.maxhp end
+        if ship.hp % 20 == 0 then device.beep() end
+    elseif missiles < 3 and credits >= 20 then
+        credits = credits - 20
+        missiles = missiles + 1
+        device.beep(true)
     end
 end
 
@@ -220,7 +262,11 @@ local function turn(dir)
     device.beep()
 end
 
+-- W and S step the throttle. Zero is a full stop, which is also how you dock.
 local function setWarp(w)
+    if w < 0 then w = 0 end
+    if w > 3 then w = 3 end
+    if w == ship.warp then return end
     ship.warp = w
     device.beep()
 end
@@ -230,8 +276,9 @@ function on_key(k)
     if k == "a" or k == "left" then turn(-1)
     elseif k == "d" or k == "right" then turn(1)
     elseif k == "b" then setWarp(0)
-    elseif k == "w" or k == " " or k == "enter" then
-        setWarp(ship.warp >= 3 and 1 or ship.warp + 1)
+    elseif k == "w" or k == "up" then setWarp(ship.warp + 1)
+    elseif k == "s" or k == "down" then setWarp(ship.warp - 1)
+    elseif k == " " or k == "enter" then setWarp(ship.warp + 1)
     elseif k == "l" then fire("laser")
     elseif k == "p" then fire("missile")
     end
@@ -247,8 +294,8 @@ function on_touch(x, y)
         save()
         return
     end
-    if y > 200 then                     -- bottom strip: speed / brake
-        if x < 80 then setWarp(0) else setWarp(ship.warp >= 3 and 1 or ship.warp + 1) end
+    if y > 200 then                     -- bottom strip: slower on the left, faster on the right
+        if x < 160 then setWarp(ship.warp - 1) else setWarp(ship.warp + 1) end
     elseif x < 90 then turn(-1)
     elseif x > 230 then turn(1)
     end
@@ -298,7 +345,7 @@ function on_open()
     for i = 1, STARS do stars[i] = {}; reseed(stars[i], true) end
     findNearest()
     hint = device.time() + 6000
-    screen.label(2, 30, 210, "A / D turn   W faster   B brake", 0x8e8e93)
+    screen.label(2, 14, 210, "A/D turn  W/S speed  L laser  P missile", 0x8e8e93)
 end
 
 function on_tick()
@@ -346,6 +393,8 @@ function on_tick()
     if math.random() < 0.012 then spawnPirate() end
     stepPirates()
     stepShots()
+    stepIncoming()
+    stepDocking()
 
     -- Shots: a bright dot flying away from you, shrinking as it goes.
     for _, sh in ipairs(shots) do
@@ -358,6 +407,19 @@ function on_tick()
             local sy = CY + 40 * shrink
             canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz,
                         sh.kind == "laser" and 0x30d158 or 0xff9f0a)
+        end
+    end
+
+    -- Incoming fire: orange bolts that swell as they reach you. Visible warning beats
+    -- losing health for no apparent reason.
+    for _, b in ipairs(incoming) do
+        local px, dist = project(b.x, b.y)
+        if px then
+            local sz = math.floor(600 / math.max(dist, 60) * 5)
+            if sz < 3 then sz = 3 end
+            if sz > 26 then sz = 26 end
+            canvas.rect(px - sz / 2, CY - sz / 2, sz, sz, 0xff9f0a)
+            canvas.rect(px - sz / 4, CY - sz / 4, sz / 2, sz / 2, 0xffe9a8)
         end
     end
 
@@ -440,6 +502,13 @@ function on_tick()
     end
 
     screen.label(6, 250, H - 40, credits .. "c", 0xffd60a)
+
+    if docked then
+        screen.label(9, 96, 60, ship.hp < ship.maxhp and "DOCKED - repairing" or
+                     (missiles < 3 and credits >= 20 and "DOCKED - rearming" or "DOCKED"), 0x30d158)
+    else
+        screen.hide(9)
+    end
 
     -- Destroyed: stop, say so, and let a tap start again. Losing has to be legible.
     if ship.hp <= 0 then

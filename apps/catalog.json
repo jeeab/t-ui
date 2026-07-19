@@ -78,9 +78,9 @@
       "id": "stars",
       "name": "Deep Space",
       "kind": "game",
-      "desc": "Explore an endless galaxy. Fight pirates, find stations, survive.",
-      "ver": "7",
-      "bytes": 17609,
+      "desc": "Explore a galaxy. W/S throttle, dock at stations to repair.",
+      "ver": "8",
+      "bytes": 20353,
       "url": "apps/stars/main.lua"
     }
   ]
