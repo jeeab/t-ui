@@ -5,6 +5,13 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Map credits
+
+**2026.07.19.13** · 2026-07-19
+
+- The Maps screen now credits where the map data came from. TopPlusOpen is open data from Germany's mapping agency and its licence requires the credit to be shown wherever the maps are, so it belongs on the device and not just on this page.
+
+
 ## Get Apps tells you about updates
 
 **2026.07.19.12** · 2026-07-19

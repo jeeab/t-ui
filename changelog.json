@@ -2,6 +2,14 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.13",
+      "date": "2026-07-19",
+      "title": "Map credits",
+      "changes": [
+        "The Maps screen now credits where the map data came from. TopPlusOpen is open data from Germany's mapping agency and its licence requires the credit to be shown wherever the maps are, so it belongs on the device and not just on this page."
+      ]
+    },
+    {
       "version": "2026.07.19.12",
       "date": "2026-07-19",
       "title": "Get Apps tells you about updates",
