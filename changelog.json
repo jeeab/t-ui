@@ -2,6 +2,19 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.10",
+      "date": "2026-07-19",
+      "title": "Keyboard, sprites, smoother maps",
+      "changes": [
+        "Apps can use the physical keyboard, and can draw proper artwork instead of just shapes. New app: Starfield - fly your ship through 220 stars.",
+        "The map now follows your finger when you drag it, instead of jumping a third of a screen per swipe.",
+        "Pins work differently: open Pins, tap Add pin, then tap the map where you want it. Holding the map no longer does anything - it was too easy to trigger by accident while panning.",
+        "Turning Wi-Fi on or off now tells you the device is about to restart, instead of looking like a crash.",
+        "You can remove apps from the device in Get Apps - no more taking the SD card to a computer.",
+        "New: add a Meshtastic channel from a link saved in channel.txt on the SD card (Settings - Add channel)."
+      ]
+    },
+    {
       "version": "2026.07.19.3",
       "date": "2026-07-19",
       "title": "Remove apps from the device",

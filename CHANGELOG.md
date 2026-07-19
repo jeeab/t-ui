@@ -5,6 +5,18 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Keyboard, sprites, smoother maps
+
+**2026.07.19.10** · 2026-07-19
+
+- Apps can use the physical keyboard, and can draw proper artwork instead of just shapes. New app: Starfield - fly your ship through 220 stars.
+- The map now follows your finger when you drag it, instead of jumping a third of a screen per swipe.
+- Pins work differently: open Pins, tap Add pin, then tap the map where you want it. Holding the map no longer does anything - it was too easy to trigger by accident while panning.
+- Turning Wi-Fi on or off now tells you the device is about to restart, instead of looking like a crash.
+- You can remove apps from the device in Get Apps - no more taking the SD card to a computer.
+- New: add a Meshtastic channel from a link saved in channel.txt on the SD card (Settings - Add channel).
+
+
 ## Remove apps from the device
 
 **2026.07.19.3** · 2026-07-19
