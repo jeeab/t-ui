@@ -238,6 +238,49 @@
     </div>
   </details>
 
+  <!-- CHANNELS -->
+  <details>
+    <summary>Adding a Meshtastic channel</summary>
+    <div class="body">
+      <p>A <strong>channel</strong> is a group you talk on. Everyone on it shares one key, so only
+      people you've given it to can read the messages. Out of the box you're on
+      <strong>LongFast</strong> — the public channel almost everyone uses. You can add private
+      ones alongside it (a family group, say) without losing LongFast.</p>
+
+      <h4>📱 From the Meshtastic phone app (easiest, and the most reliable)</h4>
+      <ul>
+        <li>Install the <strong>Meshtastic</strong> app on your phone, then pair with the T‑Deck
+          over <strong>Bluetooth</strong>. The pairing code appears on the T‑Deck's screen.</li>
+        <li>Go to <strong>Channels</strong>. You can add, rename and delete channels straight from
+          there, and it takes effect on the device immediately.</li>
+        <li>To share a channel with someone, use the <strong>share / QR</strong> button. That gives
+          you a QR code and a link — they scan or open it and they're on.</li>
+      </ul>
+      <p class="note" style="color:var(--dim);font-size:14px">Tip: a channel with a <em>blank</em>
+      name is LongFast. A channel actually named “LongFast” is a different channel that nobody
+      else is on — so leave the name empty if you're trying to be on the public one.</p>
+
+      <h4>💾 From a file on the SD card (no phone needed)</h4>
+      <p>Handy when you want to hand the same channel to several devices, or you don't want to
+      pair a phone each time.</p>
+      <ol class="steps">
+        <li>Get the channel <strong>link</strong> — in the phone app, Channels → share → copy link.
+          It looks like <code>https://meshtastic.org/e/#…</code></li>
+        <li>Save that link into a plain text file called <strong><code>channel.txt</code></strong>
+          at the top level of the T‑Deck's SD card. Just the link, nothing else.</li>
+        <li>On the T‑Deck: <strong>Settings → Add channel → Read card</strong>.</li>
+        <li>It says how many channels it added. <strong>Restart the device</strong> to finish.</li>
+      </ol>
+      <p class="note" style="color:var(--dim);font-size:14px">Adding is additive — your existing
+      channels stay. A channel whose name matches one you already have is updated rather than
+      duplicated, and your region is never changed by a shared link.</p>
+
+      <div class="warnbox">🔑 A channel link <strong>contains the encryption key</strong>. Anyone
+      who gets it can read that channel. Treat it like a password — fine to text to family, not
+      fine to post publicly or screenshot into a group chat.</div>
+    </div>
+  </details>
+
   <!-- MAKE APPS -->
   <details>
     <summary>Make your own apps</summary>
