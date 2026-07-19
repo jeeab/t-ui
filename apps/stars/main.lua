@@ -47,7 +47,7 @@ function on_open()
     end
     -- controls are not obvious on a blank starfield; say so for the first few seconds
     hintUntil = device.time() + 5000
-    screen.label(2, 88, 8, "drag to steer", 0x8e8e93)
+    screen.label(2, 38, 8, "drag or A / D to steer, space = warp", 0x8e8e93)
 end
 
 -- A tap only does something in the warp button. Everywhere else belongs to steering —
@@ -64,6 +64,22 @@ end
 function on_drag(x)
     if not ok then return end
     steerTo = (x - CX) / CX      -- -1 (hard left) .. +1 (hard right)
+end
+
+-- Physical keyboard. Printable keys arrive as themselves ("a"), the rest by name
+-- ("left", "enter"). Each press nudges the steering, which then decays like a drag
+-- does, so holding a key down steers continuously and releasing straightens up.
+function on_key(k)
+    if not ok then return end
+    if k == "left" or k == "a" then
+        steerTo = -1
+    elseif k == "right" or k == "d" then
+        steerTo = 1
+    elseif k == " " or k == "enter" or k == "w" then
+        warp = warp + 1
+        if warp > 3 then warp = 1 end
+        device.beep()
+    end
 end
 
 function on_tick()
