@@ -2,6 +2,14 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.14",
+      "date": "2026-07-19",
+      "title": "The screen stays on while you play",
+      "changes": [
+        "Playing a game with the keyboard no longer lets the screen dim and go to sleep underneath you. The device was counting only taps as 'someone's using this', so a game you played entirely on the keys looked idle even while you were mid-game."
+      ]
+    },
+    {
       "version": "2026.07.19.13",
       "date": "2026-07-19",
       "title": "Map credits",

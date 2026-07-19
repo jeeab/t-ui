@@ -1,7 +1,7 @@
 -- Starfield: Deep Space ---------------------------------------------------------
 -- Fly a ship through an endless, generated galaxy.
 --
---   A / D  turn 45 degrees      W faster / S slower (S all the way = stop)
+--   A / D  turn one compass point   W faster / S slower (S all the way = stop)
 --   L  laser (3 hits to kill)   P  phoenix missile (one shot, one kill)
 --   M  map of nearby space      tap sides to turn
 --
@@ -18,13 +18,18 @@ local CX, CY = W / 2, H / 2
 local STARS = 200
 local FOV = 1.05                -- half field of view, radians (~60 degrees)
 local SECTOR = 1000             -- world units per sector
-local DIRS = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+-- A 16-point compass. You steer one point at a time, so every heading has a name and
+-- every tap is a definite, repeatable course change - not a nudge you have to eyeball.
+local DIRS = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+              "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"}
+local STEP = math.pi / 8        -- 22.5 degrees: one point of the compass
 
 -- ---- world -------------------------------------------------------------------
 local seed = 20260719
--- heading is a free angle in radians (0 = north). turn is the current rate of swing:
--- each nudge adds to it and it bleeds off, so you can ease round or spin hard depending
--- on how much you press. Nothing is snapped - point anywhere and fly at it.
+-- heading is always one of the 16 compass points (radians, 0 = north) and changes the
+-- instant you tap - there is no drifting or coasting round. look is the VIEW angle,
+-- which eases over to meet the heading; that lag is the swing you actually see. turn is
+-- how fast the view is swinging, and only drives the picture (star sweep, ship bank).
 local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1, hp = 100, maxhp = 100}
 local stars = {}
 local ok = false
@@ -122,12 +127,16 @@ local function findNearest()
 end
 
 -- ---- helpers -----------------------------------------------------------------
-local function headingAngle(h) return h * math.pi / 4 end
+local function headingAngle(h) return h * STEP end
 
--- Nearest compass name for a free heading, for the readout.
+-- Snap an angle to the nearest of the 16 points. Everything that sets a heading goes
+-- through here, so the ship can never end up pointing between two of them.
+local function snapHeading(a)
+    return (math.floor(a / STEP + 0.5) % 16) * STEP
+end
+
 local function headingName(a)
-    local i = math.floor(((a % (2 * math.pi)) / (math.pi / 4)) + 0.5) % 8
-    return DIRS[i + 1]
+    return DIRS[(math.floor(a / STEP + 0.5) % 16) + 1]
 end
 
 -- Shortest signed difference between two angles, in radians.
@@ -283,7 +292,7 @@ local function stepDocking()
             local w = derelictIn(sx, sy)
             if w then
                 local dx, dy = w.x - ship.x, w.y - ship.y
-                if math.sqrt(dx * dx + dy * dy) < 300 then
+                if math.sqrt(dx * dx + dy * dy) < 380 then
                     docked, dockedOn = true, "wreck"
                     if not isSalvaged(sx, sy) then
                         markSalvaged(sx, sy)
@@ -299,7 +308,11 @@ local function stepDocking()
     end
 
     -- Otherwise a station: repair for free, missiles for money (tap to buy).
-    if nearest and nearestDist <= 260 then
+    -- Generous on purpose. Steering in 22.5 degree steps means you can be up to half a
+    -- point off the true bearing, so a long straight run passes to one side rather than
+    -- dead through. A wide berth makes "point at it and fly" reliably arrive, which is
+    -- the whole promise of a compass you can actually steer by.
+    if nearest and nearestDist <= 420 then
         docked, dockedOn = true, "station"
         if ship.hp < ship.maxhp then
             ship.hp = ship.hp + 1
@@ -340,7 +353,11 @@ local function restore()
     end
     if #v >= 5 then
         seed, ship.x, ship.y, ship.hp = v[1], v[2], v[3], v[5]
-        ship.heading = (v[4] or 0) * math.pi / 180
+        -- Snapped on the way back in. The save rounds the heading to whole degrees, and
+        -- 22.5 doesn't survive that - so re-snapping is what keeps a reloaded ship
+        -- exactly on a compass point. It also quietly fixes saves from the older
+        -- free-flight version, which could sit at any angle at all.
+        ship.heading = snapHeading((v[4] or 0) * math.pi / 180)
         credits = v[6] or 0
         missiles = v[7] or 3
         ship.look = ship.heading
@@ -348,17 +365,14 @@ local function restore()
 end
 
 -- ---- input -------------------------------------------------------------------
--- The T-Deck keyboard sends ONE event per press - holding a key does not repeat. So a
--- tap can't be a small nudge or you'd be hammering the key to get anywhere. Each tap
--- adds a decent swing and the rate bleeds off slowly, which means two or three taps
--- give a proper sustained turn that settles by itself.
--- Tuned so ONE tap is a deliberate ~45 degree course change that settles in about a
--- second. Tap again mid-turn to keep swinging. (A slower bleed was tried and a single
--- tap spun you most of the way round before it stopped - unflyable.)
+-- The T-Deck keyboard sends ONE event per press - holding a key does not repeat. That
+-- rules out hold-to-turn, so a tap has to BE a whole course change on its own. One tap
+-- is exactly one compass point: it lands immediately, it's the same every time, and
+-- four taps is a right angle you can count out without watching the compass.
+-- (An earlier version let the turn rate coast and bleed off. It looked nice and flew
+-- badly - you could never stop on the heading you wanted.)
 local function turn(dir)
-    ship.turn = ship.turn + dir * 0.08
-    if ship.turn > 0.20 then ship.turn = 0.20 end
-    if ship.turn < -0.20 then ship.turn = -0.20 end
+    ship.heading = snapHeading(ship.heading + dir * STEP)
 end
 
 -- W and S step the throttle. Zero is a full stop, which is also how you dock.
@@ -412,7 +426,10 @@ end
 -- under the heading you'd steer to reach it.
 local function drawCompass()
     canvas.rect(0, 0, W, 18, 0x101014)
-    for i = 0, 7 do
+    -- All 16 points get a tick, so every heading you can steer to is visible as a place
+    -- to aim at. Only the 8 principal ones get a tall tick and letters, or the strip
+    -- turns into a picket fence.
+    for i = 0, 15 do
         local rel = angleDiff(headingAngle(i), ship.look)
         if rel > -FOV and rel < FOV then
             local x = CX + (rel / FOV) * CX
@@ -490,6 +507,47 @@ local function drawMap()
     canvas.flip()
 end
 
+
+-- Pirate raider, 9x7. Drawn at a scale that grows as it closes, so a distant contact is
+-- a speck and a close one fills a chunk of the screen.
+local PIRATE_W = 9
+local PIRATE_ART =
+    "   RRR   " ..
+    "  RRRRR  " ..
+    " RRWWWRR " ..
+    "RRRWCWRRR" ..
+    " RRWWWRR " ..
+    "  R R R  " ..
+    " F     F "
+local PIRATE_PAL = {["R"] = 0xff453a, ["W"] = 0x8a1f18, ["C"] = 0xffe9a8, ["F"] = 0xff9f0a}
+
+-- Station, 11x9: a ring with a lit core.
+local STATION_W = 11
+local STATION_ART =
+    "   BBBBB   " ..
+    "  BB   BB  " ..
+    " BB     BB " ..
+    "BB  CCC  BB" ..
+    "B   CWC   B" ..
+    "BB  CCC  BB" ..
+    " BB     BB " ..
+    "  BB   BB  " ..
+    "   BBBBB   "
+local STATION_PAL = {["B"] = 0x0a84ff, ["C"] = 0x9ad0ff, ["W"] = 0xffffff}
+
+-- Derelict hulk, 9x7: a broken station, dark and lopsided.
+local WRECK_W = 9
+local WRECK_ART =
+    "  GG G   " ..
+    " GG   GG " ..
+    "GG  G  G " ..
+    "G  GGG  G" ..
+    " G  G  GG" ..
+    " GG   GG " ..
+    "   G GG  "
+local WRECK_PAL = {["G"] = 0x6b5f7a}
+local WRECK_DONE_PAL = {["G"] = 0x3a3a42}
+
 local SHIP_W, SHIP_SCALE = 11, 3
 local PALETTE = {["W"] = 0xf2f6ff, ["B"] = 0x8fa9c8, ["C"] = 0x0a84ff, ["F"] = 0xff9f0a, ["R"] = 0xff453a}
 local SHIP = {
@@ -526,16 +584,14 @@ function on_tick()
         return
     end
 
-    -- Steering: the turn rate swings the heading and then bleeds away, so letting go
-    -- settles you on a course instead of stopping dead.
-    ship.heading = ship.heading + ship.turn
-    ship.turn = ship.turn * 0.90
-    if math.abs(ship.turn) < 0.0015 then ship.turn = 0 end
-
-    -- The view follows the heading closely; the small lag is what makes the starfield
-    -- sweep as you come round.
+    -- Steering is instant: the heading jumped to the new compass point the moment the
+    -- key was pressed. What you SEE is the view chasing it - the stars sweep, the ship
+    -- banks, and it settles about half a second later. The course is already correct
+    -- throughout; only the picture is catching up.
     local d = angleDiff(ship.heading, ship.look)
-    ship.look = ship.look + d * 0.35
+    ship.turn = d * 0.18
+    ship.look = ship.look + ship.turn
+    if math.abs(d) < 0.002 then ship.look, ship.turn = ship.heading, 0 end
 
     -- Fly along the heading, not the eased view angle: the picture lags a little for
     -- looks, but the ship goes exactly where you pointed it.
@@ -608,12 +664,11 @@ function on_tick()
     for _, pr in ipairs(pirates) do
         local px, dist = project(pr.x, pr.y)
         if px and dist < 3000 then
-            local size = math.floor(700 / dist * 16)
-            if size < 3 then size = 3 end
-            if size > 46 then size = 46 end
-            local y = CY - size / 2
-            canvas.rect(px - size / 2, y, size, size, 0xff453a)
-            canvas.rect(px - size / 4, y + size / 4, size / 2, size / 4, 0x3a0f0d)
+            local sc = math.floor(2200 / dist)
+            if sc < 1 then sc = 1 end
+            if sc > 7 then sc = 7 end
+            canvas.sprite(px - (PIRATE_W * sc) / 2, CY - (7 * sc) / 2,
+                          PIRATE_W, PIRATE_ART, PIRATE_PAL, sc)
         end
     end
 
@@ -625,14 +680,26 @@ function on_tick()
             if st then
                 local px, dist = project(st.x, st.y)
                 if px and dist < 4000 then
-                    local size = math.floor(900 / dist * 14)
-                    if size < 2 then size = 2 end
-                    if size > 40 then size = 40 end
-                    local y = CY - size / 2
-                    canvas.rect(px - size / 2, y, size, size, 0x0a84ff)
-                    canvas.rect(px - size / 2 + size / 4, y + size / 4, size / 2, size / 2, 0x9ad0ff)
+                    local sc = math.floor(2600 / dist)
+                    if sc < 1 then sc = 1 end
+                    if sc > 6 then sc = 6 end
+                    canvas.sprite(px - (STATION_W * sc) / 2, CY - (9 * sc) / 2,
+                                  STATION_W, STATION_ART, STATION_PAL, sc)
                 end
             end
+        end
+    end
+
+    -- Derelicts, drawn in space so you can spot one and go and take a look. A stripped
+    -- hulk goes grey, which is how you tell at a glance you've already been here.
+    for _, w in ipairs(wrecksNearby) do
+        local px, dist = project(w.x, w.y)
+        if px and dist < 3000 then
+            local sc = math.floor(2000 / dist)
+            if sc < 1 then sc = 1 end
+            if sc > 6 then sc = 6 end
+            canvas.sprite(px - (WRECK_W * sc) / 2, CY - (7 * sc) / 2, WRECK_W, WRECK_ART,
+                          w.done and WRECK_DONE_PAL or WRECK_PAL, sc)
         end
     end
 
@@ -685,7 +752,11 @@ function on_tick()
     if nearest then
         local bearing = math.atan(nearest.x - ship.x, nearest.y - ship.y)
         local rel = angleDiff(bearing, ship.heading)
-        local arrow = (math.abs(rel) < 0.4) and "ahead" or (rel > 0 and "turn right" or "turn left")
+        -- Now that every heading has a name and a tap lands on one exactly, the readout
+        -- can give a real instruction instead of a vague "turn left": it names the point
+        -- to steer to, and you tap until the compass agrees. "ahead" means it genuinely
+        -- is - within half a point, so nothing you could steer to aims at it better.
+        local arrow = (math.abs(rel) < STEP / 2) and "ahead" or ("steer " .. headingName(bearing))
         screen.label(5, 8, H - 40, "station " .. math.floor(nearestDist) .. "  " .. arrow, 0x0a84ff)
     else
         screen.label(5, 8, H - 40, "no station in range", 0x4a4a52)

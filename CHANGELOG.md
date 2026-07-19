@@ -5,6 +5,13 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## The screen stays on while you play
+
+**2026.07.19.14** · 2026-07-19
+
+- Playing a game with the keyboard no longer lets the screen dim and go to sleep underneath you. The device was counting only taps as 'someone's using this', so a game you played entirely on the keys looked idle even while you were mid-game.
+
+
 ## Map credits
 
 **2026.07.19.13** · 2026-07-19
