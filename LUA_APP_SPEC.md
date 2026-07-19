@@ -22,9 +22,10 @@ SD card and it shows up as a tile in the launcher. No compiling, no tools — ju
 
 ## What your script may use
 Only these standard Lua libraries are available: **base**, **string**, **math**, **table**.
-Deliberately absent (for safety): `io`, `os`, `package`/`require`, `coroutine`. So: no reading
-files, no `os.time` (use `device.time()` instead), no external modules. Everything you need is
-in the API below.
+Deliberately absent (for safety): `io`, `os`, `package`/`require`, `coroutine`. So: no general
+file access, no `os.time` (use `device.time()` instead), no external modules. To save data, use
+`store.write`/`store.read` below — that's the safe, supported way, and it keeps your app inside
+its own folder. Everything you need is in the API below.
 
 ---
 
@@ -54,6 +55,9 @@ Use a **unique id for every element** (a label and a box should not share an id)
 - `screen.label(id, x, y, text, color)` — text at (x, y). `color` optional (default white).
 - `screen.box(id, x, y, w, h, color)` — a filled rectangle w×h at (x, y), lightly rounded.
   `color` optional (default white).
+- `screen.line(id, x1, y1, x2, y2, thickness, color)` — a straight line from (x1, y1) to
+  (x2, y2). `thickness` optional (default 4), `color` optional (default white). Good for
+  flipper arms, gauge needles, borders, graph lines.
 - `screen.hide(id)` — hide the element with this id (e.g. a brick that got hit). You can show it
   again by drawing to that id.
 
@@ -63,11 +67,43 @@ Limits: at most **64 elements** on screen at once. Text uses one built-in font (
 - `device.beep()` — a short gentle beep. `device.beep(true)` — a **louder** beep (for a clear
   tick/hit).
 - `device.time()` — whole milliseconds since the device booted (an integer). Use differences of
-  this for real timing.
+  this for real timing. (This is NOT the wall clock — apps can't read the date or time of day.)
+- `device.touches()` — **multi-touch.** Returns the number of fingers currently on the screen,
+  followed by an x and y for each (up to 2). Use it when one finger isn't enough — Pinball uses
+  it so both flippers can be held at once:
+
+  ```lua
+  local n, x1, y1, x2, y2 = device.touches()
+  if n >= 1 and x1 < 160 then leftFlipperUp = true end
+  if n >= 2 and x2 > 160 then rightFlipperUp = true end
+  ```
+
+  `on_touch`/`on_drag` still work and are simpler — reach for `device.touches()` only when you
+  genuinely need two fingers at the same time.
+
+### Saving data (your app remembers things)
+Your app has its own folder on the SD card and can keep files there. Use it for high scores,
+settings, saved games — anything that should survive closing the app or a reboot.
+
+- `store.write(name, text)` — save `text` under `name`. Returns `true` if it worked.
+- `store.read(name)` — returns the saved text, or `nil` if there's nothing saved yet.
+
+Everything is **text**, so convert numbers on the way in and out:
+
+```lua
+local best = tonumber(store.read("best.txt") or "0") or 0
+if score > best then store.write("best.txt", tostring(score)) end
+```
+
+Rules: `name` is a plain filename like `best.txt` — no slashes and no `..` (you can only write
+inside your own app's folder). Max **4 KB** per file. Always handle `nil` from `store.read` —
+the first time your app ever runs, nothing is saved yet.
 
 ### Hard limits (respect these)
-- The whole `main.lua` file must be **under ~6 KB** of text.
+- The whole `main.lua` file must be **under 16 KB** of text. (Aim smaller — most apps are 2-4 KB;
+  Pinball, which is a big one, is about 12 KB.)
 - Max 64 on-screen elements.
+- Max 4 KB per saved file.
 - If your script hits a Lua error, the system catches it (the device won't crash) but your app
   may stop updating — so test your logic.
 
@@ -131,11 +167,21 @@ apps get a default icon.)
 ## Prompt template (for handing to an AI)
 > Using the attached T-Deck Lua app specification, write a complete `main.lua` for a game called
 > **[NAME]**. It should **[describe gameplay]**. Controls: **[tap / drag]**. Follow every limit in
-> the spec (320×240 screen, 0xRRGGBB colors, only `screen.*`/`device.*`, the `on_open/on_tick/
-> on_touch/on_drag` callbacks, ≤64 elements, ≤6 KB, touchscreen only). Give me only the contents
-> of `main.lua`, ready to drop on the SD card.
+> the spec (320×240 screen, 0xRRGGBB colors, only `screen.*`/`device.*`/`store.*`, the `on_open/
+> on_tick/on_touch/on_drag` callbacks, ≤64 elements, ≤16 KB, touchscreen only). Save the high
+> score with `store.write`/`store.read`. Give me only the contents of `main.lua`, ready to drop
+> on the SD card.
 
 ## Ideas that fit this device well
 Pong, Breakout, Snake, Simon (color memory), Whac-A-Mole, a reaction-timer, a dice roller, a
 tip calculator, a drum pad (using `device.beep`), a soundboard, a "tap to the beat" trainer,
-a simple maze, Flappy-style tap game, a countdown/interval timer.
+a simple maze, Flappy-style tap game, a countdown/interval timer, a score keeper for card games
+(`store` remembers the running totals), a tally counter, a unit converter, 2048, Connect 4.
+
+---
+
+## Sharing your app
+Apps you write can go in **Get Apps**, the T-Deck's built-in app list, so anyone can install
+them over Wi-Fi without a computer. Submissions are open to everyone — see
+[SUBMITTING.md](SUBMITTING.md) for how to send one in. A check runs automatically and tells you
+in plain English if anything needs fixing.
