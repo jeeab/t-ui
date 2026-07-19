@@ -133,7 +133,10 @@
 <script>
 // The catalog is the single source of truth: it's what the device downloads, and this page
 // renders from the same file. Adding an app to apps/catalog.json updates both.
-const ICONS = { pinball:"🪩", dice:"🎲", reaction:"⚡", breakout:"🧱", metronome:"🎵" };
+const ICONS = {
+  pinball:"🪩", dice:"🎲", reaction:"⚡", breakout:"🧱", metronome:"🎵",
+  score:"🏆", tally:"🔢", convert:"📏", intervals:"⏱️", breathe:"🫁"
+};
 const FALLBACK_ICON = { game:"🎮", tool:"🔧", toy:"🎈" };
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => (

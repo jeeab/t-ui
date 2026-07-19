@@ -28,6 +28,51 @@
       "ver": "1",
       "bytes": 2175,
       "url": "apps/reaction/main.lua"
+    },
+    {
+      "id": "score",
+      "name": "Score",
+      "kind": "tool",
+      "desc": "Keep score for 2-4 players. Saves as you go.",
+      "ver": "1",
+      "bytes": 3883,
+      "url": "apps/score/main.lua"
+    },
+    {
+      "id": "tally",
+      "name": "Tally",
+      "kind": "tool",
+      "desc": "Four counters that remember their totals. Tap to count.",
+      "ver": "1",
+      "bytes": 2973,
+      "url": "apps/tally/main.lua"
+    },
+    {
+      "id": "convert",
+      "name": "Convert",
+      "kind": "tool",
+      "desc": "Miles, temperature, weight and volume. Type it, read it.",
+      "ver": "1",
+      "bytes": 4723,
+      "url": "apps/convert/main.lua"
+    },
+    {
+      "id": "intervals",
+      "name": "Intervals",
+      "kind": "tool",
+      "desc": "Repeating work/rest timer with beeps. For workouts.",
+      "ver": "1",
+      "bytes": 5221,
+      "url": "apps/intervals/main.lua"
+    },
+    {
+      "id": "breathe",
+      "name": "Breathe",
+      "kind": "tool",
+      "desc": "Box breathing: in 4, hold 4, out 4, hold 4. Follow the square.",
+      "ver": "1",
+      "bytes": 3318,
+      "url": "apps/breathe/main.lua"
     }
   ]
 }
