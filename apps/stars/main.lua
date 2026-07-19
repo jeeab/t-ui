@@ -37,6 +37,11 @@ local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1,
               hp = 100, maxhp = 100, sh = 50, maxsh = 50}
 local SHIELD_REGEN_MS = 900      -- one point per this long, once you've been left alone
 local SHIELD_CALM_MS = 3000      -- how long since the last hit before it starts coming back
+-- ONE number for "close enough to deal with": it decides both when you can dock and when
+-- a station's name is up on screen. Keeping them the same means the name appearing is
+-- exactly the signal that you're in range, and the two can never drift apart.
+local DOCK_RANGE = 260
+local WRECK_RANGE = 240
 local REPAIR_COST = 10           -- Parts for a full hull repair
 local SALVAGE_PARTS = 5          -- Parts per derelict
 local MISSILE_COST = 10          -- credits per missile - exactly one pirate's bounty
@@ -69,7 +74,6 @@ local showMap = false
 -- never fights a station name for the same strip of screen, and the newest thing to
 -- happen is always the thing you're being told about.
 local popText, popUntil = nil, 0
-local nameShown = nil                 -- the station we last announced, so we only do it once
 local salvaged = {}          -- "sx,sy" of hulks already stripped; bounded, saved with the game
 
 local function popup(t, ms)
@@ -367,7 +371,7 @@ local function stepDocking()
             local w = derelictIn(sx, sy)
             if w then
                 local dx, dy = w.x - ship.x, w.y - ship.y
-                if math.sqrt(dx * dx + dy * dy) < 380 then
+                if math.sqrt(dx * dx + dy * dy) < WRECK_RANGE then
                     docked, dockedOn, dockedWreck = true, "wreck", w
                     return
                 end
@@ -375,12 +379,11 @@ local function stepDocking()
         end
     end
 
-    -- Otherwise a station. The dock radius is generous on purpose: steering in 22.5
-    -- degree steps means you can be up to half a point off the true bearing, so a long
-    -- straight run passes to one side rather than dead through. A wide berth makes
-    -- "point at it and fly" reliably arrive, which is the whole promise of a compass
-    -- you can actually steer by.
-    if nearest and nearestDist <= 420 then
+    -- Otherwise a station. This was once much wider, to forgive the half-a-point of aim
+    -- error that 22.5 degree steering allows. Tightened back down because docking from
+    -- far enough away that the station is still a speck doesn't read as docking at all -
+    -- you correct course on the way in anyway, so the slack wasn't buying much.
+    if nearest and nearestDist <= DOCK_RANGE then
         docked, dockedOn = true, "station"
     end
 end
@@ -976,10 +979,22 @@ function on_tick()
     -- Dock buttons, drawn from the same list the touch handler reads. A button you can't
     -- afford still shows, greyed - "REPAIR 10p" when you have 4 Parts tells you what to
     -- go and do, where hiding it would just look like the station was broken.
+    --
+    -- SEE-THROUGH: the canvas has no alpha - every colour is fully opaque - so the fill
+    -- is painted as alternating single-pixel rows. The gaps let the starfield and
+    -- anything moving out there show through, which matters because you can be shot at
+    -- while parked. Cheap too: 13 rows a button instead of thousands of pixels. The
+    -- caption is a real label drawn on top, so the text stays perfectly solid.
     for _, b in ipairs(dockButtons()) do
-        canvas.rect(b.x, b.y, b.w, b.h, b.on and 0x1c3a5e or 0x24242a)
-        canvas.rect(b.x, b.y, b.w, 2, b.on and 0x0a84ff or 0x3a3a42)
-        canvas.rect(b.x, b.y + b.h - 2, b.w, 2, b.on and 0x0a84ff or 0x3a3a42)
+        local edge = b.on and 0x0a84ff or 0x3a3a42
+        local fill = b.on and 0x1c3a5e or 0x24242a
+        for yy = b.y + 2, b.y + b.h - 3, 2 do
+            canvas.rect(b.x, yy, b.w, 1, fill)
+        end
+        canvas.rect(b.x, b.y, b.w, 2, edge)
+        canvas.rect(b.x, b.y + b.h - 2, b.w, 2, edge)
+        canvas.rect(b.x, b.y, 2, b.h, edge)
+        canvas.rect(b.x + b.w - 2, b.y, 2, b.h, edge)
     end
 
     canvas.flip()
@@ -1005,20 +1020,19 @@ function on_tick()
     -- Both currencies together: credits buy missiles, Parts fix hulls.
     screen.label(6, 228, H - 40, credits .. "c  " .. parts .. "p", 0xffd60a)
 
-    -- Station name, announced as you come up on one and then gone again. Only fires when
-    -- the station you're nearest to CHANGES, so it greets you on arrival instead of
-    -- sitting there blinking at you the whole time you're parked.
+    -- One line, two jobs, resolved by priority. A pickup ("+2 PARTS") takes it for a
+    -- second or so because it just happened; otherwise, whenever you're inside docking
+    -- range of a station, its name simply stays up until you leave. So the name on screen
+    -- IS the "you can dock here" indicator rather than a separate thing to learn.
     local nowT = device.time()
-    if nearest and nearestDist < 1400 then
-        if nameShown ~= nearest.name then
-            nameShown = nearest.name
-            popup(nearest.name, 3500)
-        end
-    elseif not nearest or nearestDist > 2200 then
-        nameShown = nil                       -- left the area; greet it again next time
-    end
+    local line = nil
     if popText and nowT < popUntil then
-        screen.label(12, math.floor((W - #popText * 7) / 2), 44, popText, 0x9ad0ff)
+        line = popText
+    elseif nearest and nearestDist <= DOCK_RANGE then
+        line = nearest.name
+    end
+    if line then
+        screen.label(12, math.floor((W - #line * 7) / 2), 44, line, 0x9ad0ff)
     else
         screen.hide(12)
     end
