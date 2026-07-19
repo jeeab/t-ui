@@ -1,10 +1,12 @@
 -- Starfield: Deep Space ---------------------------------------------------------
 -- Fly a ship through an endless, generated galaxy.
 --
---   A / D  (or left/right)  turn 45 degrees        W  faster    S  slower/stop
---   L  laser (weak, free)     P  phoenix missile     tap sides  turn
+--   A / D  turn 45 degrees      W faster / S slower (S all the way = stop)
+--   L  laser (3 hits to kill)   P  phoenix missile (one shot, one kill)
+--   M  map of nearby space      tap sides to turn
 --
--- Brake to a stop next to a station and it repairs your hull and restocks missiles.
+-- Stop beside a STATION to repair, and tap to buy missiles.
+-- Stop beside a DERELICT to salvage it.
 --
 -- The galaxy is NOT stored anywhere. Every sector's contents come from a hash of its
 -- coordinates and the world seed, so space is effectively infinite, costs no memory,
@@ -20,7 +22,10 @@ local DIRS = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
 
 -- ---- world -------------------------------------------------------------------
 local seed = 20260719
-local ship = {x = 0, y = 0, heading = 0, look = 0, warp = 1, hp = 100, maxhp = 100}
+-- heading is a free angle in radians (0 = north). turn is the current rate of swing:
+-- each nudge adds to it and it bleeds off, so you can ease round or spin hard depending
+-- on how much you press. Nothing is snapped - point anywhere and fly at it.
+local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1, hp = 100, maxhp = 100}
 local stars = {}
 local ok = false
 local hint = 0
@@ -33,9 +38,28 @@ local shots = {}
 local missiles = 3
 local credits = 0
 local lastFire, lastHit = 0, 0
-local MAX_PIRATES = 4
+local MAX_PIRATES = 3
 local incoming = {}          -- pirate shots on their way to you, so you can SEE them coming
-local docked, dockMsg = false, 0
+local docked, dockedOn = false, nil
+local hitFrom = 0            -- bearing of the last hit, so the flash shows WHERE from
+local showMap = false
+local salvaged = {}          -- "sx,sy" of hulks already stripped; bounded, saved with the game
+
+local function salvageKey(sx, sy) return sx .. "," .. sy end
+
+local function isSalvaged(sx, sy)
+    for i = 1, #salvaged do
+        if salvaged[i] == salvageKey(sx, sy) then return true end
+    end
+    return false
+end
+
+local function markSalvaged(sx, sy)
+    salvaged[#salvaged + 1] = salvageKey(sx, sy)
+    -- Keep the list bounded so the save stays small; the oldest wrecks eventually
+    -- drift back, which is fine - they're a long way behind you by then.
+    while #salvaged > 40 do table.remove(salvaged, 1) end
+end
 
 -- Deterministic hash of a sector. Same inputs always give the same number, which is
 -- what lets the galaxy exist without being stored. Integer maths only - floats would
@@ -58,17 +82,28 @@ local function stationIn(sx, sy)
     }
 end
 
--- How lawless is this region? Drives pirate density later; shown now as a warning.
+-- Derelict hulks: rarer than stations, and each one can only be stripped once (see the
+-- salvaged list in the save). Free credits and sometimes a missile, for the detour.
+local function derelictIn(sx, sy)
+    local h = hash(sx, sy, 3)
+    if h % 11 ~= 0 then return nil end
+    return {x = sx * SECTOR + (h >> 5) % SECTOR, y = sy * SECTOR + (h >> 15) % SECTOR, sx = sx, sy = sy}
+end
+
+-- How lawless is this region? Drives pirate density, and is shown on screen so you can
+-- decide to avoid a rough neighbourhood instead of blundering into one.
 local function dangerAt(sx, sy)
     return hash(sx, sy, 7) % 100
 end
 
 -- Nearest station in the sectors around us. Cheap: 25 sectors, only when it changes.
 local nearest, nearestDist = nil, 0
+local wrecksNearby = {}
 local function findNearest()
     local csx = math.floor(ship.x / SECTOR)
     local csy = math.floor(ship.y / SECTOR)
     nearest, nearestDist = nil, 1e18
+    wrecksNearby = {}
     for sx = csx - 2, csx + 2 do
         for sy = csy - 2, csy + 2 do
             local st = stationIn(sx, sy)
@@ -77,12 +112,23 @@ local function findNearest()
                 local d = math.sqrt(dx * dx + dy * dy)
                 if d < nearestDist then nearest, nearestDist = st, d end
             end
+            local w = derelictIn(sx, sy)
+            if w then
+                w.done = isSalvaged(sx, sy)
+                wrecksNearby[#wrecksNearby + 1] = w
+            end
         end
     end
 end
 
 -- ---- helpers -----------------------------------------------------------------
 local function headingAngle(h) return h * math.pi / 4 end
+
+-- Nearest compass name for a free heading, for the readout.
+local function headingName(a)
+    local i = math.floor(((a % (2 * math.pi)) / (math.pi / 4)) + 0.5) % 8
+    return DIRS[i + 1]
+end
 
 -- Shortest signed difference between two angles, in radians.
 local function angleDiff(a, b)
@@ -117,7 +163,7 @@ end
 -- Closing distance is what makes them threatening, so they always fly at you.
 local function spawnPirate()
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
-    if dangerAt(csx, csy) < 45 then return end          -- quiet region, nothing out here
+    if dangerAt(csx, csy) < 62 then return end          -- most space is quiet
     if #pirates >= MAX_PIRATES then return end
     -- appear somewhere ahead-ish, far enough away to be seen coming
     local ang = ship.look + (math.random() - 0.5) * 2.2
@@ -185,6 +231,9 @@ local function stepIncoming()
             b.y = ship.y + (dy / d) * b.dist
         end
         if b.dist <= 60 then
+            -- remember the bearing it arrived from, relative to where we're facing, so
+            -- the flash can tell you which way to turn instead of just "you're hit"
+            hitFrom = angleDiff(math.atan(b.x - ship.x, b.y - ship.y), ship.heading)
             table.remove(incoming, i)
             ship.hp = ship.hp - 6
             lastHit = device.time()
@@ -222,44 +271,87 @@ end
 -- Stop next to a station and it patches you up. Braking is what docks you, which gives
 -- the throttle a purpose beyond going fast, and gives credits somewhere to go.
 local function stepDocking()
-    docked = false
-    if not nearest or nearestDist > 260 or ship.warp > 0 then return end
-    docked = true
-    if ship.hp < ship.maxhp then
-        ship.hp = ship.hp + 1
-        if ship.hp > ship.maxhp then ship.hp = ship.maxhp end
-        if ship.hp % 20 == 0 then device.beep() end
-    elseif missiles < 3 and credits >= 20 then
-        credits = credits - 20
-        missiles = missiles + 1
-        device.beep(true)
+    docked, dockedOn = false, nil
+    if ship.warp > 0 then return end          -- you dock by stopping
+
+    -- A derelict close by? Strip it once, then it's an empty hull forever after.
+    local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
+    for sx = csx - 1, csx + 1 do
+        for sy = csy - 1, csy + 1 do
+            local w = derelictIn(sx, sy)
+            if w then
+                local dx, dy = w.x - ship.x, w.y - ship.y
+                if math.sqrt(dx * dx + dy * dy) < 300 then
+                    docked, dockedOn = true, "wreck"
+                    if not isSalvaged(sx, sy) then
+                        markSalvaged(sx, sy)
+                        local loot = 25 + (hash(sx, sy, 5) % 40)
+                        credits = credits + loot
+                        if hash(sx, sy, 9) % 3 == 0 and missiles < 6 then missiles = missiles + 1 end
+                        device.beep(true)
+                    end
+                    return
+                end
+            end
+        end
     end
+
+    -- Otherwise a station: repair for free, missiles for money (tap to buy).
+    if nearest and nearestDist <= 260 then
+        docked, dockedOn = true, "station"
+        if ship.hp < ship.maxhp then
+            ship.hp = ship.hp + 1
+            if ship.hp > ship.maxhp then ship.hp = ship.maxhp end
+            if ship.hp % 20 == 0 then device.beep() end
+        end
+    end
+end
+
+-- The station shop: one tap, one missile, while you're stopped alongside.
+local function buyMissile()
+    if not docked or dockedOn ~= "station" then return false end
+    if credits < 20 or missiles >= 6 then return false end
+    credits = credits - 20
+    missiles = missiles + 1
+    device.beep(true)
+    return true
 end
 
 -- ---- save --------------------------------------------------------------------
 -- Tiny, because the galaxy is generated rather than stored: just where we are.
 local function save()
+    -- ship state, then the wrecks already stripped. Still tiny: the galaxy is generated.
     store.write("save.txt", table.concat({seed, math.floor(ship.x), math.floor(ship.y),
-                                          ship.heading, ship.hp, credits, missiles}, ","))
+                                          math.floor(ship.heading * 180 / math.pi), ship.hp, credits, missiles}, ",")
+                            .. ";" .. table.concat(salvaged, " "))
 end
 
 local function restore()
-    local s = store.read("save.txt")
-    if not s then return end
+    local raw = store.read("save.txt")
+    if not raw then return end
+    local s, wrecks = raw:match("^([^;]*);?(.*)$")
     local v = {}
     for n in s:gmatch("-?%d+") do v[#v + 1] = tonumber(n) end
+    salvaged = {}
+    for w in (wrecks or ""):gmatch("[-%d,]+") do
+        if w:find(",") then salvaged[#salvaged + 1] = w end
+    end
     if #v >= 5 then
-        seed, ship.x, ship.y, ship.heading, ship.hp = v[1], v[2], v[3], v[4], v[5]
+        seed, ship.x, ship.y, ship.hp = v[1], v[2], v[3], v[5]
+        ship.heading = (v[4] or 0) * math.pi / 180
         credits = v[6] or 0
         missiles = v[7] or 3
-        ship.look = headingAngle(ship.heading)
+        ship.look = ship.heading
     end
 end
 
 -- ---- input -------------------------------------------------------------------
+-- A nudge, not a snap. Tap once for a gentle course change, hold the key or tap
+-- repeatedly to swing round hard.
 local function turn(dir)
-    ship.heading = (ship.heading + dir) % 8
-    device.beep()
+    ship.turn = ship.turn + dir * 0.055
+    if ship.turn > 0.16 then ship.turn = 0.16 end
+    if ship.turn < -0.16 then ship.turn = -0.16 end
 end
 
 -- W and S step the throttle. Zero is a full stop, which is also how you dock.
@@ -281,6 +373,9 @@ function on_key(k)
     elseif k == " " or k == "enter" then setWarp(ship.warp + 1)
     elseif k == "l" then fire("laser")
     elseif k == "p" then fire("missile")
+    elseif k == "m" then
+        showMap = not showMap
+        device.beep()
     end
 end
 
@@ -293,6 +388,10 @@ function on_touch(x, y)
         shots = {}
         save()
         return
+    end
+    if showMap then showMap = false; return end     -- any tap closes the map
+    if docked and dockedOn == "station" and y < 200 then
+        if buyMissile() then return end
     end
     if y > 200 then                     -- bottom strip: slower on the left, faster on the right
         if x < 160 then setWarp(ship.warp - 1) else setWarp(ship.warp + 1) end
@@ -320,7 +419,68 @@ local function drawCompass()
             end
         end
     end
+    -- Contacts on the strip, so it doubles as a radar. Anything behind you can't be
+    -- placed on a forward-facing strip, so it gets pinned to the edge you'd turn toward.
+    for _, pr in ipairs(pirates) do
+        local rel = angleDiff(math.atan(pr.x - ship.x, pr.y - ship.y), ship.look)
+        local x
+        if rel > -FOV and rel < FOV then
+            x = CX + (rel / FOV) * CX
+        else
+            x = (rel > 0) and (W - 4) or 2      -- off to the right / left, behind you
+        end
+        canvas.rect(x - 2, 1, 5, 5, 0xff453a)
+    end
+    for _, w in ipairs(wrecksNearby) do
+        local rel = angleDiff(math.atan(w.x - ship.x, w.y - ship.y), ship.look)
+        if rel > -FOV and rel < FOV then
+            canvas.rect(CX + (rel / FOV) * CX - 1, 2, 3, 3, 0xbf5af2)
+        end
+    end
+
     canvas.rect(CX - 1, 0, 3, 18, 0xffd60a)   -- you are pointing here
+end
+
+-- ---- map ---------------------------------------------------------------------
+-- A chart of the sectors around you. Navigating purely on a bearing is atmospheric but
+-- hard work; this makes a big galaxy feel navigable. The sim pauses while it's open.
+local function drawMap()
+    canvas.clear(0x05050a)
+    local SPAN = 4                       -- sectors either side
+    local cell = 30
+    local ox, oy = CX, CY
+    local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
+
+    -- grid
+    for i = -SPAN, SPAN do
+        canvas.line(ox + i * cell, 20, ox + i * cell, H - 20, 0x16161e)
+        canvas.line(20, oy + i * cell, W - 20, oy + i * cell, 0x16161e)
+    end
+
+    for sx = csx - SPAN, csx + SPAN do
+        for sy = csy - SPAN, csy + SPAN do
+            -- screen position: north is up, so sector y grows upward
+            local px = ox + (sx - csx) * cell
+            local py = oy - (sy - csy) * cell
+            if px > 12 and px < W - 12 and py > 22 and py < H - 22 then
+                if dangerAt(sx, sy) >= 62 then
+                    canvas.rect(px - cell / 2, py - cell / 2, cell - 1, cell - 1, 0x2a0f10)
+                end
+                local st = stationIn(sx, sy)
+                if st then canvas.rect(px - 4, py - 4, 8, 8, 0x0a84ff) end
+                local wk = derelictIn(sx, sy)
+                if wk then
+                    canvas.rect(px - 3, py - 3, 6, 6,
+                                isSalvaged(sx, sy) and 0x3a3a42 or 0xbf5af2)
+                end
+            end
+        end
+    end
+
+    -- you, with a stub showing which way you're pointing
+    canvas.circle(ox, oy, 4, 0x30d158, true)
+    canvas.line(ox, oy, ox + math.sin(ship.heading) * 14, oy - math.cos(ship.heading) * 14, 0x30d158)
+    canvas.flip()
 end
 
 local SHIP_W, SHIP_SCALE = 11, 3
@@ -341,7 +501,7 @@ function on_open()
         return
     end
     restore()
-    ship.look = headingAngle(ship.heading)
+    ship.look = ship.heading
     for i = 1, STARS do stars[i] = {}; reseed(stars[i], true) end
     findNearest()
     hint = device.time() + 6000
@@ -351,23 +511,30 @@ end
 function on_tick()
     if not ok then return end
 
-    -- Ease the view towards the heading: the snap is instant, the picture swings.
-    local target = headingAngle(ship.heading)
-    local d = angleDiff(target, ship.look)
-    local turning = math.abs(d) > 0.01
-    if turning then ship.look = ship.look + d * 0.18 end
+    -- Steering: the turn rate swings the heading and then bleeds away, so letting go
+    -- settles you on a course instead of stopping dead.
+    ship.heading = ship.heading + ship.turn
+    ship.turn = ship.turn * 0.90
+    if math.abs(ship.turn) < 0.001 then ship.turn = 0 end
 
-    -- Move through the world.
+    -- The view follows the heading closely; the small lag is what makes the starfield
+    -- sweep as you come round.
+    local d = angleDiff(ship.heading, ship.look)
+    ship.look = ship.look + d * 0.35
+
+    -- Move along the CHOSEN heading in whole lattice directions, not along the eased
+    -- view angle. The view swings smoothly for looks; the ship travels dead straight,
+    -- which is what lets you line up on something and actually arrive at it.
     local speed = ship.warp * 6
     if speed > 0 then
-        ship.x = ship.x + math.sin(ship.look) * speed
-        ship.y = ship.y + math.cos(ship.look) * speed
+        ship.x = ship.x + math.sin(ship.heading) * speed
+        ship.y = ship.y + math.cos(ship.heading) * speed
     end
 
     canvas.clear(0x000000)
 
     -- Stars. Turning sweeps them sideways, which is what sells the rotation.
-    local sweep = d * 260
+    local sweep = ship.turn * 900
     local zstep = ship.warp * 0.012
     for i = 1, STARS do
         local s = stars[i]
@@ -390,7 +557,7 @@ function on_tick()
 
     -- Combat runs every frame. Pirates only appear in lawless regions, which is what
     -- makes the danger rating something you can learn rather than random punishment.
-    if math.random() < 0.012 then spawnPirate() end
+    if math.random() < 0.004 then spawnPirate() end
     stepPirates()
     stepShots()
     stepIncoming()
@@ -459,7 +626,7 @@ function on_tick()
 
     -- The ship, banking into the turn.
     local frame = 2
-    if d < -0.06 then frame = 1 elseif d > 0.06 then frame = 3 end
+    if ship.turn < -0.012 then frame = 1 elseif ship.turn > 0.012 then frame = 3 end
     canvas.sprite(CX - (SHIP_W * SHIP_SCALE) / 2, 170, SHIP_W, SHIP[frame], PALETTE, SHIP_SCALE)
 
     -- Readouts: where we are, and where the nearest station is. Without this a compass
@@ -479,22 +646,31 @@ function on_tick()
     -- missiles remaining, as pips
     for i = 1, missiles do canvas.rect(224 + (i - 1) * 8, H - 16, 5, 10, 0xff9f0a) end
 
-    -- Taking a hit flashes the edges red - unmissable without covering the view.
-    if device.time() - lastHit < 250 then
-        canvas.rect(0, 18, W, 3, 0xff453a)
-        canvas.rect(0, H - 25, W, 3, 0xff453a)
+    -- A hit flashes the edge it came FROM, so the damage tells you where to look. A
+    -- flash on all four sides says "you're hurt"; one on the left says "turn left".
+    if device.time() - lastHit < 350 then
+        local a = hitFrom
+        if a > -0.79 and a < 0.79 then
+            canvas.rect(0, 18, W, 4, 0xff453a)                  -- dead ahead
+        elseif a >= 0.79 and a < 2.36 then
+            canvas.rect(W - 4, 18, 4, H - 44, 0xff453a)         -- from the right
+        elseif a <= -0.79 and a > -2.36 then
+            canvas.rect(0, 18, 4, H - 44, 0xff453a)             -- from the left
+        else
+            canvas.rect(0, H - 26, W, 4, 0xff453a)              -- from behind
+        end
     end
 
     canvas.flip()
 
     -- Text goes on labels, which are crisper than anything we can draw by hand.
     screen.label(3, 8, 22, "X " .. math.floor(ship.x) .. "  Y " .. math.floor(ship.y), 0x8e8e93)
-    screen.label(4, 250, 22, DIRS[ship.heading + 1], 0x30d158)
+    screen.label(4, 250, 22, headingName(ship.heading), 0x30d158)
 
     findNearest()
     if nearest then
         local bearing = math.atan(nearest.x - ship.x, nearest.y - ship.y)
-        local rel = angleDiff(bearing, headingAngle(ship.heading))
+        local rel = angleDiff(bearing, ship.heading)
         local arrow = (math.abs(rel) < 0.4) and "ahead" or (rel > 0 and "turn right" or "turn left")
         screen.label(5, 8, H - 40, "station " .. math.floor(nearestDist) .. "  " .. arrow, 0x0a84ff)
     else

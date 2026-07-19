@@ -78,9 +78,9 @@
       "id": "stars",
       "name": "Deep Space",
       "kind": "game",
-      "desc": "Explore a galaxy. W/S throttle, dock at stations to repair.",
-      "ver": "8",
-      "bytes": 20353,
+      "desc": "Explore a galaxy: free flight, map, wrecks, pirates, stations.",
+      "ver": "9",
+      "bytes": 28205,
       "url": "apps/stars/main.lua"
     }
   ]
