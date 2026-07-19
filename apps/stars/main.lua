@@ -200,9 +200,11 @@ local function stepShots(dt)
             local p = pirates[pi]
             local dx, dy = p.x - ship.x, p.y - ship.y
             local pd = math.sqrt(dx * dx + dy * dy)
-            if math.abs(pd - sh.dist) < 220 then
+            -- Generous on purpose. The target is a few pixels wide at range and you are
+            -- aiming with a thumb on a 320-pixel screen; a tight box just feels broken.
+            if math.abs(pd - sh.dist) < 420 then
                 local rel = angleDiff(math.atan(dx, dy), sh.ang)
-                if math.abs(rel) < 0.18 then
+                if math.abs(rel) < 0.42 then
                     p.hp = p.hp - (sh.kind == "laser" and 1 or 3)
                     hit = true
                     if p.hp <= 0 then
@@ -346,12 +348,17 @@ local function restore()
 end
 
 -- ---- input -------------------------------------------------------------------
--- A nudge, not a snap. Tap once for a gentle course change, hold the key or tap
--- repeatedly to swing round hard.
+-- The T-Deck keyboard sends ONE event per press - holding a key does not repeat. So a
+-- tap can't be a small nudge or you'd be hammering the key to get anywhere. Each tap
+-- adds a decent swing and the rate bleeds off slowly, which means two or three taps
+-- give a proper sustained turn that settles by itself.
+-- Tuned so ONE tap is a deliberate ~45 degree course change that settles in about a
+-- second. Tap again mid-turn to keep swinging. (A slower bleed was tried and a single
+-- tap spun you most of the way round before it stopped - unflyable.)
 local function turn(dir)
-    ship.turn = ship.turn + dir * 0.055
-    if ship.turn > 0.16 then ship.turn = 0.16 end
-    if ship.turn < -0.16 then ship.turn = -0.16 end
+    ship.turn = ship.turn + dir * 0.08
+    if ship.turn > 0.20 then ship.turn = 0.20 end
+    if ship.turn < -0.20 then ship.turn = -0.20 end
 end
 
 -- W and S step the throttle. Zero is a full stop, which is also how you dock.
@@ -511,20 +518,27 @@ end
 function on_tick()
     if not ok then return end
 
+    -- Map is a full screen chart; the world pauses behind it. (This call was missing,
+    -- which is why M appeared to do nothing at all.)
+    if showMap then
+        drawMap()
+        for i = 2, 9 do screen.hide(i) end   -- text would float over the chart
+        return
+    end
+
     -- Steering: the turn rate swings the heading and then bleeds away, so letting go
     -- settles you on a course instead of stopping dead.
     ship.heading = ship.heading + ship.turn
     ship.turn = ship.turn * 0.90
-    if math.abs(ship.turn) < 0.001 then ship.turn = 0 end
+    if math.abs(ship.turn) < 0.0015 then ship.turn = 0 end
 
     -- The view follows the heading closely; the small lag is what makes the starfield
     -- sweep as you come round.
     local d = angleDiff(ship.heading, ship.look)
     ship.look = ship.look + d * 0.35
 
-    -- Move along the CHOSEN heading in whole lattice directions, not along the eased
-    -- view angle. The view swings smoothly for looks; the ship travels dead straight,
-    -- which is what lets you line up on something and actually arrive at it.
+    -- Fly along the heading, not the eased view angle: the picture lags a little for
+    -- looks, but the ship goes exactly where you pointed it.
     local speed = ship.warp * 6
     if speed > 0 then
         ship.x = ship.x + math.sin(ship.heading) * speed

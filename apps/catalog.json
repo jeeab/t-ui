@@ -79,8 +79,8 @@
       "name": "Deep Space",
       "kind": "game",
       "desc": "Explore a galaxy: free flight, map, wrecks, pirates, stations.",
-      "ver": "9",
-      "bytes": 28205,
+      "ver": "10",
+      "bytes": 29003,
       "url": "apps/stars/main.lua"
     }
   ]
