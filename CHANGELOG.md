@@ -1,0 +1,94 @@
+# T-UI changelog
+
+Every release, newest first. Written for people using the device, not developers.
+
+Install the latest from **<https://jeeab.github.io/t-ui/>**.
+
+
+## Real graphics for games
+
+**2026.07.19.2** · 2026-07-19
+
+- Apps can now draw pixels directly instead of arranging a limited number of shapes, which makes proper games possible.
+- New app: Starfield - fly through 220 stars, drag to steer, tap WARP for speed.
+- The app-maker's guide now explains how to use it.
+
+
+## A clock, and tidier apps
+
+**2026.07.19.1** · 2026-07-19
+
+- The time now shows at the top of the home screen, taken from the GPS satellites.
+- New Time zone setting - pick yours in Settings or the clock will read UTC.
+- Get Apps has All / Games / Tools tabs.
+- The five new tools have proper icons instead of a generic tile.
+
+
+## Five new tools
+
+**2026.07.19** · 2026-07-19
+
+- Score Keeper - keep score for 2 to 4 players, saved as you go.
+- Tally - four counters that remember their totals.
+- Convert - miles, temperature, weight and volume, with a keypad.
+- Intervals - repeating work/rest timer with beeps.
+- Breathe - box breathing, follow the square.
+
+
+## GPS fixed
+
+**2026.07.18.6** · 2026-07-18
+
+- The GPS could sit for half an hour without finding satellites, and turning it off and on again in Settings was the only cure. It now keeps itself searching, including after the device sleeps.
+- Get Apps no longer leaves Wi-Fi switched on (and the battery draining) if you left the screen with the trackball instead of the Back button.
+
+
+## Get Apps, and map fixes
+
+**2026.07.18.3** · 2026-07-18
+
+- New Get Apps tile - browse add-on apps and install them straight to the device over Wi-Fi. No computer, no card reader, and they appear on the home screen immediately.
+- Map downloads can now go to detail level 18 (the default stays at 15 - each level is roughly four times the tiles).
+- Your chosen map style now survives a reboot properly.
+- The map download screen tells you to stay on the screen while it runs. Letting the device sleep is fine.
+
+
+## Version number
+
+**2026.07.18.1** · 2026-07-18
+
+- The version now shows at the bottom of Settings, so you can tell what you're running.
+
+
+## Maps stopped being laggy
+
+**2026.07.16.7** · 2026-07-17
+
+- Panning the map could freeze for seconds at a time while it fetched missing tiles from the internet. It never fetches while your finger is on the screen now, and gave up waiting on slow servers.
+- Zooming back out is instant - twice as many decoded tiles are kept ready.
+
+
+## Choose your map source
+
+**2026.07.16.6** · 2026-07-17
+
+- Pick between USGS Topo (US) and TopPlusOpen (Europe).
+- Zoom level badge on the map, and a proper gear icon.
+- Fixed: asking for detail 1-15 actually downloaded levels 10-24.
+
+
+## Crash fixed
+
+**2026.07.16.4** · 2026-07-17
+
+- Fixed a boot crash-loop introduced by the previous build.
+- The GPS switch in Settings now genuinely turns the GPS on and off, and remembers it.
+- Both pinball flippers can be held at once.
+
+
+## Download maps on the device
+
+**2026.07.16.3** · 2026-07-16
+
+- Maps gets a gear menu: switch map styles, and download a region of USGS Topo over Wi-Fi right on the device.
+- Frame the area, pick the detail, see the size estimate before you start. It resumes where it stopped, and the screen can sleep while it works.

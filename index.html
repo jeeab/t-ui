@@ -70,6 +70,17 @@
   a{color:var(--accent2);text-decoration:none}
   a:hover{text-decoration:underline}
 
+  /* What's new */
+  .cl-current{margin:0 0 14px;color:var(--dim);font-size:13.5px}
+  .cl-rel{padding:12px 0;border-top:1px solid var(--line)}
+  .cl-rel:first-child{border-top:0;padding-top:4px}
+  .cl-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .cl-title{font-weight:700;font-size:15.5px;color:var(--text)}
+  .cl-ver{font-size:12px;color:var(--dim);font-family:ui-monospace,Menlo,Consolas,monospace}
+  .cl-new{font-size:11px;font-weight:700;color:#04110a;background:var(--accent);
+    border-radius:999px;padding:1px 8px}
+  .cl-rel ul{margin:0;padding-left:18px;color:#dcdce2;font-size:14.5px;line-height:1.65}
+  .cl-more{color:var(--dim);font-size:14px;margin:10px 0 0}
   footer{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
     color:var(--dim);font-size:12.5px;line-height:1.7;text-align:center}
 </style>
@@ -226,6 +237,58 @@
       <p><strong>➡️ Full guide:</strong> <a href="./LUA_APP_SPEC.md">Writing an app for the T‑Deck (Lua)</a></p>
     </div>
   </details>
+
+  <!-- WHAT'S NEW (rendered from changelog.json) -->
+  <div class="card" id="whatsnew" style="text-align:left">
+    <h2 style="margin:2px 0 4px;font-size:20px">🆕 What's new</h2>
+    <p class="cl-current" id="cl-current"></p>
+    <div id="cl-list"><p style="color:var(--dim);font-size:14px">Loading…</p></div>
+    <p style="margin:14px 0 0"><a href="./CHANGELOG.md">Full history →</a></p>
+  </div>
+
+<script>
+// Renders from changelog.json, and reads the version being handed out from manifest.json,
+// so this section can never drift from what the Install button actually flashes.
+(function () {
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  };
+  var SHOW = 4; // newest few; the rest are in CHANGELOG.md
+
+  Promise.all([
+    fetch("./changelog.json", {cache: "no-store"}).then(function (r) { return r.json(); }),
+    fetch("./manifest.json", {cache: "no-store"}).then(function (r) { return r.json(); }).catch(function () { return null; })
+  ]).then(function (res) {
+    var rel = (res[0] && res[0].releases) || [];
+    var manifest = res[1];
+    var current = manifest && manifest.version;
+
+    if (current) {
+      document.getElementById("cl-current").innerHTML =
+        "The Install button above flashes <strong>" + esc(current) + "</strong>.";
+    }
+    if (!rel.length) { document.getElementById("cl-list").innerHTML = ""; return; }
+
+    document.getElementById("cl-list").innerHTML = rel.slice(0, SHOW).map(function (r, i) {
+      var isCurrent = current && r.version === current;
+      return '<div class="cl-rel">' +
+        '<div class="cl-head">' +
+          '<span class="cl-title">' + esc(r.title) + "</span>" +
+          '<span class="cl-ver">' + esc(r.version) + "</span>" +
+          (isCurrent ? '<span class="cl-new">you get this</span>' : "") +
+        "</div><ul>" +
+        (r.changes || []).map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") +
+        "</ul></div>";
+    }).join("") +
+    (rel.length > SHOW ? '<p class="cl-more">' + (rel.length - SHOW) + " earlier releases in the full history.</p>" : "");
+  }).catch(function (e) {
+    document.getElementById("cl-list").innerHTML =
+      '<p style="color:var(--dim);font-size:14px">Couldn\'t load the changelog (' + esc(e.message) + ").</p>";
+  });
+})();
+</script>
 
   <footer>
     <strong>T‑UI</strong> is an unofficial, community‑made custom firmware built on
