@@ -22,6 +22,46 @@ local ok = false
 -- the warp button, bottom-left
 local BX, BY, BW, BH = 6, 202, 74, 32
 
+-- Sprite art: one character per pixel, blank = see-through. Three frames so the ship
+-- banks into the turn. 11 wide, 8 tall, drawn at 3x so it reads on a 320x240 screen.
+local SHIP_W, SHIP_SCALE = 11, 3
+local PALETTE = {
+    ["W"] = 0xf2f6ff, -- hull highlight
+    ["B"] = 0x8fa9c8, -- hull shadow
+    ["C"] = 0x0a84ff, -- cockpit
+    ["F"] = 0xff9f0a, -- engine flame
+    ["R"] = 0xff453a, -- flame core
+}
+local SHIP = {
+    -- banking left
+    "    WW     " ..
+    "   WWWB    " ..
+    "  WWCWBB   " ..
+    " WWWCWWBB  " ..
+    "WWWWWWWBBB " ..
+    " W  FFF  B " ..
+    "    RFR    " ..
+    "     R     ",
+    -- level
+    "     W     " ..
+    "    WWW    " ..
+    "   WWCWB   " ..
+    "  WWWCWBB  " ..
+    " WWWWWWBBB " ..
+    "W   FFF   B" ..
+    "    RFR    " ..
+    "     R     ",
+    -- banking right
+    "     WW    " ..
+    "    BWWW   " ..
+    "   BBWCWW  " ..
+    "  BBWWCWWW " ..
+    " BBBWWWWWWW" ..
+    " B  FFF  W " ..
+    "    RFR    " ..
+    "     R     ",
+}
+
 local function reseed(s, atFront)
     -- x,y are a direction from the centre; z is depth (small z = right in your face).
     -- At z = 1 the whole spread lands on screen, so new stars always appear.
@@ -128,6 +168,13 @@ function on_tick()
             canvas.pixel(math.floor(px), math.floor(py), s.c)
         end
     end
+
+    -- Your ship, banking into the turn. Sitting low and centred so the stars stream
+    -- past it; the frame is chosen from how hard you're currently steering.
+    local frame = 2
+    if drift < -0.25 then frame = 1 elseif drift > 0.25 then frame = 3 end
+    local shipW = SHIP_W * SHIP_SCALE
+    canvas.sprite(CX - shipW / 2 - drift * 18, 168, SHIP_W, SHIP[frame], PALETTE, SHIP_SCALE)
 
     -- warp button, drawn on the canvas so it can't eat into the element budget
     canvas.rect(BX, BY, BW, BH, 0x1c1c20)
