@@ -2,13 +2,20 @@
 -- Fly a ship through an endless, generated galaxy.
 --
 --   A / D  turn one compass point   W faster / S slower (S all the way = stop)
---   L  laser (5-8 hits to kill, worse regions breed tougher pirates)
---   P  phoenix missile (one shot, one kill)
+--   L  laser - eight tiers, green up to a shock ball, and the beam colour tells you which
+--   P  phoenix missile (one shot, one kill, whatever it hits)
 --   M  map of nearby space      tap sides to turn
 --
--- Stop beside a STATION to meet the harbourmaster: repair, or exchange (sell salvage,
--- buy missiles and Parts). Nothing can shoot you while you're tied up alongside.
+-- Stop beside a STATION to meet the harbourmaster: repair, exchange (sell salvage, buy
+-- missiles and Parts), or UPGRADES - the shelf of named gear this particular station
+-- happens to stock. Nothing can shoot you while you're tied up alongside.
 -- Stop beside a DERELICT to salvage it - out in the open, where you CAN still be shot.
+--
+-- TWO axes of difficulty, and they work differently on purpose. DANGER is scattered about
+-- the map, so a bad sector is something you can look at and go around. DEPTH - how far
+-- out from where you started - only ever goes up, and it raises the number of raiders,
+-- their toughness, and the share of them that are purple marauders. The good gear is only
+-- sold out there, so the game asks you to go somewhere that will hurt to get it.
 --
 -- The galaxy is NOT stored anywhere. Every sector's contents come from a hash of its
 -- coordinates and the world seed, so space is effectively infinite, costs no memory,
@@ -36,9 +43,64 @@ local seed = 20260719
 -- from costs you nothing but time. The HULL is the expensive part: it only comes back at
 -- a station, and only if you have Parts. That's what makes a bad fight actually matter.
 local ship = {x = 0, y = 0, heading = 0, look = 0, turn = 0, warp = 1,
-              hp = 100, maxhp = 100, sh = 50, maxsh = 50}
-local SHIELD_REGEN_MS = 900      -- one point per this long, once you've been left alone
+              hp = 100, maxhp = 100, sh = 50, maxsh = 50,
+              -- What you're flying WITH. All three start at mark 1 and only ever go up:
+              -- there is no selling your gun back, so every station visit is a decision
+              -- you can't undo by wandering into a worse shop later.
+              laser = 1, shieldMk = 1, hullMk = 1}
 local SHIELD_CALM_MS = 3000      -- how long since the last hit before it starts coming back
+
+-- ---- outfitting ---------------------------------------------------------------
+-- Eight lasers, and you can tell which one you're firing WITHOUT reading a number: the
+-- beam changes colour as it gets stronger. Green is what you launch with and orange is
+-- late-game, which is deliberately not the order a rainbow comes in - it's the order
+-- these read as "hotter" on a black screen. The top tier stops being a beam at all and
+-- fires a shock ball, so the last upgrade looks like an event rather than a brighter line.
+--
+-- Damage climbs faster than price does at the bottom and slower at the top, so the first
+-- upgrade is a big obvious jump (it's the one that teaches you upgrades exist) and the
+-- last is a long haul you fly a long way to afford.
+local LASER = {
+    {name = "GREEN",  dmg = 1,  cost = 0,    core = 0x8affc1, glow = 0x30d158},
+    {name = "BLUE",   dmg = 2,  cost = 120,  core = 0x9ad0ff, glow = 0x0a84ff},
+    {name = "YELLOW", dmg = 3,  cost = 200,  core = 0xfff3a8, glow = 0xffd60a},
+    {name = "RED",    dmg = 4,  cost = 320,  core = 0xff9d95, glow = 0xff453a},
+    {name = "PURPLE", dmg = 6,  cost = 480,  core = 0xe0a8ff, glow = 0xbf5af2},
+    {name = "ORANGE", dmg = 8,  cost = 700,  core = 0xffd3a0, glow = 0xff9f0a},
+    {name = "WHITE",  dmg = 11, cost = 1000, core = 0xffffff, glow = 0xc7c7cc},
+    {name = "SHOCK",  dmg = 15, cost = 1500, core = 0xaaffcc, glow = 0x30d158},
+}
+
+-- Shields get BOTH bigger and quicker to come back, because either one alone is a
+-- disappointing purchase: a longer bar you wait ages to refill still means running away,
+-- and a fast trickle on a small bar still pops in one exchange of fire.
+local SHIELD = {
+    {max = 50,  regen = 900, cost = 0},
+    {max = 75,  regen = 750, cost = 150},
+    {max = 110, regen = 600, cost = 340},
+    {max = 150, regen = 450, cost = 620},
+    {max = 200, regen = 320, cost = 1100},
+}
+
+-- Hull is the expensive stat to actually use, since damage to it costs Parts to undo.
+-- A bigger hull is therefore worth less than it looks - it buys you survival, not thrift.
+local HULL = {
+    {max = 100, cost = 0},
+    {max = 140, cost = 180},
+    {max = 190, cost = 400},
+    {max = 250, cost = 760},
+    {max = 320, cost = 1300},
+}
+
+-- Marks decide the ceilings, so this has to run after anything that changes them AND
+-- after a load. Current hull/shields are clamped rather than topped up: buying a bigger
+-- hull gives you room to repair into, not a free repair.
+local function applyMarks()
+    ship.maxsh = SHIELD[ship.shieldMk].max
+    ship.maxhp = HULL[ship.hullMk].max
+    if ship.sh > ship.maxsh then ship.sh = ship.maxsh end
+    if ship.hp > ship.maxhp then ship.hp = ship.maxhp end
+end
 -- ONE number for "close enough to deal with": it decides both when you can dock and when
 -- a station's name is up on screen. Keeping them the same means the name appearing is
 -- exactly the signal that you're in range, and the two can never drift apart.
@@ -46,8 +108,9 @@ local DOCK_RANGE = 260
 local WRECK_RANGE = 240
 local REPAIR_COST = 10           -- Parts for a full hull repair
 local SALVAGE_PARTS = 5          -- Parts per derelict
-local MISSILE_COST = 10          -- credits per missile - exactly one pirate's bounty
-local PIRATE_BOUNTY = 10         -- credits per kill
+local MISSILE_COST = 10          -- credits per missile - exactly one raider's bounty
+-- Bounties now live per enemy type in PIRATE_KINDS: a marauder is worth four raiders,
+-- which is what stops the tough ones from being purely a tax on flying outward.
 local PARTS_PACK = 5             -- Parts you get for buying a pack at a station
 local PARTS_COST = 40            -- deliberately poor value: a way out, not a shortcut
 -- Selling MUST pay less per Part than buying, or the shop is a money printer: buy five
@@ -158,6 +221,68 @@ local function dangerAt(sx, sy)
     return hash(sx, sy, 7) % 100
 end
 
+-- How far out from where you started, in sectors. This is the OTHER axis of difficulty,
+-- and the important thing about it is that it isn't random: danger is scattered about the
+-- map so you can dodge a bad sector, but depth only goes up by flying, and it never lies.
+-- Deep space is worse everywhere, so "go further" is a decision rather than a dice roll.
+local function depthOf(sx, sy)
+    return math.floor(math.sqrt(sx * sx + sy * sy))
+end
+
+-- What a station has ON THE SHELF, decided by where it is. A shop out in deep lawless
+-- space stocks better gear than one round the corner from home, which is the whole reason
+-- to fly somewhere frightening: the good guns are only sold in bad neighbourhoods.
+-- Generated from the sector hash like everything else, so a station that had a purple
+-- laser has that same purple laser when you fly back for it with the money.
+local function stationGrade(sx, sy)
+    local g = 1 + math.floor(dangerAt(sx, sy) / 24) + math.floor(depthOf(sx, sy) / 3)
+    if g > 8 then g = 8 end
+    return g
+end
+
+-- Which keeper runs this station, and what he says. Same trick as the name: the face and
+-- the line are properties of the PLACE, so docking at a station always meets the same
+-- alien saying the same thing, on any device, with nothing stored anywhere.
+local function keeperOf(sx, sy)
+    local h = hash(sx, sy, 41)
+    return (h % 4) + 1, ((h >> 6) % 12) + 1
+end
+
+-- Three shelves: gun, shields, hull. Each is at the station's grade give or take a
+-- little, and a station only stocks two of the three - a shop with everything makes the
+-- next one pointless, and you want a reason to keep visiting.
+local function stationStock(sx, sy)
+    local g = stationGrade(sx, sy)
+    local h = hash(sx, sy, 31)
+    local skip = h % 3                     -- which shelf this station doesn't carry
+    local items = {}
+    -- Laser
+    local ll = g + (((h >> 3) % 3) - 1)
+    if ll < 2 then ll = 2 end
+    if ll > 8 then ll = 8 end
+    if skip ~= 0 then
+        items[#items + 1] = {kind = "laser", lvl = ll, cost = LASER[ll].cost,
+                             label = LASER[ll].name .. " LASER (" .. ll .. ")"}
+    end
+    -- Shields, on a 5-mark scale rather than 8, so the grade is squeezed down to fit
+    local sl = 2 + math.floor((g - 1) * 4 / 7) + (((h >> 7) % 3) - 1)
+    if sl < 2 then sl = 2 end
+    if sl > 5 then sl = 5 end
+    if skip ~= 1 then
+        items[#items + 1] = {kind = "shield", lvl = sl, cost = SHIELD[sl].cost,
+                             label = "SHIELD MK" .. sl .. " (" .. SHIELD[sl].max .. ")"}
+    end
+    -- Hull, same squeeze
+    local hl = 2 + math.floor((g - 1) * 4 / 7) + (((h >> 11) % 3) - 1)
+    if hl < 2 then hl = 2 end
+    if hl > 5 then hl = 5 end
+    if skip ~= 2 then
+        items[#items + 1] = {kind = "hull", lvl = hl, cost = HULL[hl].cost,
+                             label = "HULL MK" .. hl .. " (" .. HULL[hl].max .. ")"}
+    end
+    return items
+end
+
 -- Nearest station in the sectors around us. Cheap: 25 sectors, only when it changes.
 local nearest, nearestDist = nil, 0
 local wrecksNearby = {}
@@ -230,11 +355,32 @@ end
 -- How many raiders a region will field at once. Quiet space gets none; the worst places
 -- get five. Tying it to the danger rating means "this sector is nasty" is something you
 -- can actually feel arriving rather than just read off the map.
+-- Three things fly at you, and they want different answers from you rather than just
+-- having different numbers. The raider is the baseline. The interceptor is FAST and
+-- fragile - it closes before you've finished turning, so it punishes flying straight.
+-- The marauder is the purple one: three times the hull, hits nearly twice as hard, and
+-- slow enough that you can run - which is usually the right call until your gun is better.
+local PIRATE_KINDS = {
+    {name = "raider",      hpMul = 1,  bounty = 10, dmg = 6,  speed = 3.0, cool = 1.0,
+     w = 9,  h = 7, near = 2200},
+    {name = "interceptor", hpMul = 0.5, bounty = 15, dmg = 4, speed = 5.5, cool = 0.55,
+     w = 7,  h = 5, near = 1700},
+    {name = "marauder",    hpMul = 3,  bounty = 40, dmg = 11, speed = 2.2, cool = 1.4,
+     w = 11, h = 9, near = 2800},
+}
+
 local function maxPiratesHere()
-    local d = dangerAt(math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR))
-    if d < 62 then return 0 end
-    local n = 3 + math.floor((d - 62) / 13)
-    if n > 5 then n = 5 end
+    local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
+    local d = dangerAt(csx, csy)
+    local depth = depthOf(csx, csy)
+    local n = 0
+    if d >= 62 then n = 3 + math.floor((d - 62) / 13) end
+    -- Depth adds raiders on top of whatever the sector was already going to field, and it
+    -- adds them to QUIET sectors too. That's the point: near home a peaceful sector is
+    -- genuinely empty, but a long way out there is no such thing as empty space, so
+    -- distance is felt as pressure rather than just as a bigger number on the position.
+    n = n + math.floor(depth / 4)
+    if n > 8 then n = 8 end
     return n
 end
 
@@ -251,22 +397,44 @@ local function spawnPirate()
     if safeHarbour() then return end                    -- nobody jumps a station
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     local d = dangerAt(csx, csy)
-    if d < 62 then return end                           -- most space is quiet
+    local depth = depthOf(csx, csy)
+    -- The gate is now the population, not the danger rating on its own: deep space fields
+    -- raiders even where the law is technically fine, so this has to ask the same question
+    -- the cap does or quiet-but-deep sectors would stay empty forever.
     if #pirates >= maxPiratesHere() then return end
     -- appear somewhere ahead-ish, far enough away to be seen coming
     local ang = ship.look + (math.random() - 0.5) * 2.2
     local dist = 1600 + math.random() * 900
-    -- Tougher than they were, and tougher still where the law is thinnest. The region's
-    -- danger rating already decides HOW MANY jump you; making it decide how hard they are
-    -- to kill as well is what stops lawless space from being merely busy. Five laser hits
-    -- at the quiet end, eight at the worst - a real burst of fire, not a tap.
-    local hp = 5 + math.floor((d - 62) / 13)
-    if hp > 8 then hp = 8 end
+
+    -- Which sort turns up. Marauders are the reward for going somewhere stupid, so their
+    -- share is driven mostly by DEPTH and only topped up by local lawlessness - that way
+    -- a nasty sector near home stays survivable in a starting ship, and the purple ones
+    -- are something you meet because you flew out to meet them.
+    local marauder = depth * 0.02
+    if d >= 62 then marauder = marauder + (d - 62) / 300 end
+    if marauder > 0.40 then marauder = 0.40 end
+    local r = math.random()
+    local ki = 1
+    if r < marauder then ki = 3
+    elseif r < marauder + 0.22 then ki = 2 end
+    local k = PIRATE_KINDS[ki]
+
+    -- Base hull, then the kind's multiplier on top. Danger decides toughness where the law
+    -- is thin; depth adds to it everywhere. A marauder deep out is genuinely a wall of a
+    -- thing - which is exactly what the laser upgrades are for.
+    local hp = 5
+    if d >= 62 then hp = hp + math.floor((d - 62) / 13) end
+    hp = hp + math.floor(depth / 6)
+    if hp > 12 then hp = 12 end
+    hp = math.floor(hp * k.hpMul)
+    if hp < 2 then hp = 2 end
+
     pirates[#pirates + 1] = {
         x = ship.x + math.sin(ang) * dist,
         y = ship.y + math.cos(ang) * dist,
         hp = hp,
-        cool = 800 + math.random() * 1500,
+        kind = ki,
+        cool = (800 + math.random() * 1500) * k.cool,
     }
 end
 
@@ -278,7 +446,10 @@ local function fire(kind)
         missiles = missiles - 1
     end
     lastFire = now
-    shots[#shots + 1] = {kind = kind, dist = 0, ang = ship.look, born = now}
+    -- The shot carries the gun's tier with it, so what's already in flight keeps the
+    -- colour it was fired with even if you dock and buy a better one a second later.
+    shots[#shots + 1] = {kind = kind, dist = 0, ang = ship.look, born = now,
+                         tier = ship.laser}
     device.beep(kind == "missile")
 end
 
@@ -299,17 +470,22 @@ local function stepShots(dt)
             if math.abs(pd - sh.dist) < 420 then
                 local rel = angleDiff(math.atan(dx, dy), sh.ang)
                 if math.abs(rel) < 0.42 then
-                    -- The phoenix is one shot, one kill, and stays that way now pirates
-                    -- have up to 8 hull. Fixed damage of 3 would have quietly demoted the
-                    -- missile to "a slightly better laser" the moment they got tougher.
-                    p.hp = p.hp - (sh.kind == "laser" and 1 or 99)
+                    -- The phoenix is one shot, one kill, and stays that way now a deep
+                    -- marauder can carry 36 hull. Fixed damage would have quietly demoted
+                    -- the missile to "a slightly better laser" the moment they got tougher.
+                    -- The laser now asks the gun you actually own how hard it hits.
+                    p.hp = p.hp - (sh.kind == "laser" and LASER[ship.laser].dmg or 99)
                     hit = true
                     if p.hp <= 0 then
+                        local pk = PIRATE_KINDS[p.kind or 1]
                         -- Leave a blast behind at the pirate's own position, so the kill
                         -- happens out there in the world and stays put as you fly past it.
-                        blasts[#blasts + 1] = {x = p.x, y = p.y, born = device.time()}
+                        -- Big things blow up bigger; killing a marauder should look like
+                        -- the achievement it was.
+                        blasts[#blasts + 1] = {x = p.x, y = p.y, born = device.time(),
+                                               big = pk.hpMul >= 3}
                         table.remove(pirates, pi)
-                        credits = credits + PIRATE_BOUNTY
+                        credits = credits + pk.bounty
                         -- Some wrecks are worth stripping. Deliberately less than a
                         -- derelict pays, so fighting tops your Parts up but hunting
                         -- derelicts is still the way to actually fund a repair.
@@ -353,7 +529,10 @@ local function stepIncoming()
             table.remove(incoming, i)
             -- Shields take it first and soak the whole hit if they can. Only what's left
             -- over reaches the hull, which is the damage you'll have to pay Parts to undo.
-            local dmg = 6
+            -- The bolt carries its own damage because a marauder's shot has to land
+            -- harder than an interceptor's; older bolts with no figure on them fall back
+            -- to the flat 6 this used to be.
+            local dmg = b.dmg or 6
             if ship.sh > 0 then
                 local absorbed = math.min(ship.sh, dmg)
                 ship.sh = ship.sh - absorbed
@@ -383,16 +562,19 @@ local function stepPirates()
             p.x = p.x + (dx / d) * 9
             p.y = p.y + (dy / d) * 9
         else
-            -- close in
-            local step = 3
-            p.x = p.x - (dx / d) * step
-            p.y = p.y - (dy / d) * step
+            -- close in, at whatever pace this sort flies. An interceptor covering ground
+            -- nearly twice as fast as a raider is the whole of its threat - it is barely
+            -- worth shooting, but it will be on you before you finish the turn.
+            local k = PIRATE_KINDS[p.kind or 1]
+            p.x = p.x - (dx / d) * k.speed
+            p.y = p.y - (dy / d) * k.speed
             -- Shoot something you can actually see coming, rather than damaging you out
             -- of nowhere: the bolt is launched here and travels toward you over a second
             -- or so, growing as it closes. Getting hit should never be a surprise.
             if d < 1600 and now > (p.lastShot or 0) + p.cool then
                 p.lastShot = now
-                incoming[#incoming + 1] = {x = p.x, y = p.y, dist = d}
+                incoming[#incoming + 1] = {x = p.x, y = p.y, dist = d, dmg = k.dmg,
+                                           kind = p.kind or 1}
                 device.beep()
             end
         end
@@ -496,18 +678,87 @@ local function salvageWreck()
     return true
 end
 
+-- Which mark of a thing you're currently flying. One place that knows what "better" means
+-- for each kind of gear, because the no-downgrade rule has to be enforced identically in
+-- the shop list, the buy itself, and the greying - three answers would eventually disagree.
+local function currentLevel(kind)
+    if kind == "laser" then return ship.laser end
+    if kind == "shield" then return ship.shieldMk end
+    return ship.hullMk
+end
+
+-- Fitting new gear. There is no selling it back and nothing worse is ever offered, so a
+-- ship only ever gets stronger. That's a deliberate design rule and not an oversight: the
+-- whole point of a named item on a shelf ("PURPLE LASER (5)") is that you can look at it,
+-- decide you can't afford it yet, and come back - which only works if leaving and
+-- returning can't cost you anything.
+local function buyUpgrade(item)
+    return function()
+        if not docked or dockedOn ~= "station" then return false end
+        if item.lvl <= currentLevel(item.kind) then return false end
+        if credits < item.cost then return false end
+        credits = credits - item.cost
+        if item.kind == "laser" then
+            ship.laser = item.lvl
+            popup(LASER[item.lvl].name .. " LASER FITTED", 2200)
+        elseif item.kind == "shield" then
+            ship.shieldMk = item.lvl
+            applyMarks()
+            -- A new generator arrives charged. It would refill itself for free anyway, so
+            -- making you sit and wait for it would only be a tax on having just bought it.
+            ship.sh = ship.maxsh
+            popup("SHIELD MK" .. item.lvl .. " FITTED", 2200)
+        else
+            ship.hullMk = item.lvl
+            applyMarks()
+            -- Deliberately NOT a free repair: a bigger hull is room to repair into. If it
+            -- healed you too it would be strictly better than paying Parts, and nobody
+            -- would ever press REPAIR again.
+            popup("HULL MK" .. item.lvl .. " FITTED", 2200)
+        end
+        device.beep(true)
+        return true
+    end
+end
+
 -- What you can actually do while docked. ONE list, read by both the drawing code and the
 -- touch handler, so a button can never appear somewhere it isn't tappable (or worse, be
 -- tappable where nothing is drawn). Sits in the middle band, clear of the turn thirds at
 -- the screen edges and the throttle strip along the bottom.
 local BTN_X, BTN_W, BTN_H = 92, 136, 26
+-- The outfitter's rows are wider than the rest of the shop's, because the goods are NAMED.
+-- "PURPLE LASER (5)  480c" is 22 characters and the whole value of naming it is lost if it
+-- gets cut off, so that page gets nearly the full width of the screen.
+local SHOP_X, SHOP_W = 30, 260
 local BTN_SLOT = {20, 21, 22, 23}      -- label ids, well clear of the HUD's own slots
 local function dockButtons()
     local b = {}
     local top, h = 62, BTN_H
+    local bx, bw = BTN_X, BTN_W
     if not docked then return b end
     if dockedOn == "station" then
-        if dockMenu == "exchange" then
+        if dockMenu == "upgrades" then
+            -- The outfitter. Only things that BEAT what you're flying are listed, which is
+            -- what makes the rule "you can't downgrade" invisible rather than a message
+            -- you have to read. A shop you've outgrown says so plainly instead of
+            -- appearing broken or empty.
+            top, h, bx, bw = 56, 24, SHOP_X, SHOP_W
+            local stock = nearest and stationStock(nearest.sx, nearest.sy) or {}
+            local offered = 0
+            for _, it in ipairs(stock) do
+                if it.lvl > currentLevel(it.kind) and offered < 3 then
+                    offered = offered + 1
+                    b[#b + 1] = {text = it.label .. "  " .. it.cost .. "c",
+                                 act = buyUpgrade(it), on = credits >= it.cost}
+                end
+            end
+            if offered == 0 then
+                b[#b + 1] = {text = "NOTHING BETTER HERE", on = false,
+                             act = function() return false end}
+            end
+            b[#b + 1] = {text = "BACK", on = true,
+                         act = function() dockMenu = "main"; device.beep(); return true end}
+        elseif dockMenu == "exchange" then
             -- The counter. Four rows, so they start higher and sit tighter; the last one
             -- overlaps your own ship at y 170, which is fine because the buttons are drawn
             -- see-through and it reads as glass rather than as a collision.
@@ -521,12 +772,15 @@ local function dockButtons()
             b[#b + 1] = {text = "BACK", on = true,
                          act = function() dockMenu = "main"; device.beep(); return true end}
         else
-            -- The greeting. Deliberately only two choices: the harbourmaster is asking a
-            -- question, and a question with two answers reads faster than a price list.
-            -- Sits low enough to leave the alien and his line of dialogue the top half.
-            top, h = 110, BTN_H
+            -- The greeting: three doors, each a different KIND of errand rather than a
+            -- price list. Trade, outfit, repair. It sits low enough to leave the
+            -- harbourmaster and his line of dialogue the top half of the screen, and the
+            -- last row now stops exactly where your own ship starts.
+            top, h = 106, 24
             b[#b + 1] = {text = "EXCHANGE", on = true,
                          act = function() dockMenu = "exchange"; device.beep(); return true end}
+            b[#b + 1] = {text = "UPGRADES", on = true,
+                         act = function() dockMenu = "upgrades"; device.beep(); return true end}
             b[#b + 1] = {text = "REPAIR " .. REPAIR_COST .. "p", act = repairHull,
                          on = parts >= REPAIR_COST and ship.hp < ship.maxhp}
         end
@@ -534,7 +788,7 @@ local function dockButtons()
         b[#b + 1] = {text = "SALVAGE +" .. SALVAGE_PARTS .. "p", act = salvageWreck, on = true}
     end
     for i, btn in ipairs(b) do
-        btn.x, btn.y, btn.w, btn.h = BTN_X, top + (i - 1) * (h + 4), BTN_W, h
+        btn.x, btn.y, btn.w, btn.h = bx, top + (i - 1) * (h + 4), bw, h
     end
     return b
 end
@@ -543,9 +797,13 @@ end
 -- Tiny, because the galaxy is generated rather than stored: just where we are.
 local function save()
     -- ship state, then the wrecks already stripped. Still tiny: the galaxy is generated.
+    -- The three gear marks go on the END of the line rather than anywhere sensible,
+    -- because the fields are read back by POSITION - appending is the only change that
+    -- leaves every older save still loading correctly.
     store.write("save.txt", table.concat({seed, math.floor(ship.x), math.floor(ship.y),
                                           math.floor(ship.heading * 180 / math.pi), ship.hp, credits,
-                                          missiles, parts, math.floor(ship.sh)}, ",")
+                                          missiles, parts, math.floor(ship.sh),
+                                          ship.laser, ship.shieldMk, ship.hullMk}, ",")
                             .. ";" .. table.concat(salvaged, " "))
 end
 
@@ -571,6 +829,15 @@ local function restore()
         -- Saves from before Parts and shields existed simply don't have these fields, so
         -- they fall back to sensible starting values rather than loading as zero.
         parts = v[8] or 0
+        -- Gear marks. A save written before upgrades existed simply has no such fields, so
+        -- it loads as a mark-one ship - which is precisely what it was. Clamped both ways
+        -- because a corrupted digit here would otherwise index straight off the tables.
+        ship.laser = math.min(math.max(v[10] or 1, 1), #LASER)
+        ship.shieldMk = math.min(math.max(v[11] or 1, 1), #SHIELD)
+        ship.hullMk = math.min(math.max(v[12] or 1, 1), #HULL)
+        -- The ceilings have to exist BEFORE the saved shields are measured against them,
+        -- or a ship with a mark-4 generator would reload capped at the mark-1 maximum.
+        applyMarks()
         ship.sh = v[9] or ship.maxsh
         if ship.sh > ship.maxsh then ship.sh = ship.maxsh end
         ship.look = ship.heading
@@ -729,24 +996,51 @@ local function drawMap()
 end
 
 
--- Pirate raider, 9x7. Drawn at a scale that grows as it closes, so a distant contact is
--- a speck and a close one fills a chunk of the screen.
-local PIRATE_W = 9
-local PIRATE_ART =
+-- The three raider sprites, indexed to match PIRATE_KINDS. Drawn at a scale that grows as
+-- they close, so a distant contact is a speck and a close one fills a chunk of the screen.
+-- They're told apart by COLOUR and SIZE before you can make out any detail, which matters
+-- because the decision you need to make - fight it or run - has to happen while it's still
+-- a smudge. Red is a fair fight, yellow is quick, purple means turn around.
+local PIRATE_ART = {
+    -- raider, 9x7: the baseline, red
     "   RRR   " ..
     "  RRRRR  " ..
     " RRWWWRR " ..
     "RRRWCWRRR" ..
     " RRWWWRR " ..
     "  R R R  " ..
-    " F     F "
-local PIRATE_PAL = {["R"] = 0xff453a, ["W"] = 0x8a1f18, ["C"] = 0xffe9a8, ["F"] = 0xff9f0a}
+    " F     F ",
+    -- interceptor, 7x5: small and pointed, all engine
+    "   Y   " ..
+    "  YCY  " ..
+    " YYCYY " ..
+    "YYY YYY" ..
+    " F   F ",
+    -- marauder, 11x9: the purple one, twice the frontage of a raider
+    "    PPP    " ..
+    "  PPPPPPP  " ..
+    " PPMMMMMPP " ..
+    " PMMCWCMMP " ..
+    "PPMMCWCMMPP" ..
+    " PMMMMMMMP " ..
+    " PP MMM PP " ..
+    "PP   P   PP" ..
+    " F   F   F ",
+}
+local PIRATE_PAL = {
+    {["R"] = 0xff453a, ["W"] = 0x8a1f18, ["C"] = 0xffe9a8, ["F"] = 0xff9f0a},
+    {["Y"] = 0xffd60a, ["C"] = 0xfff3a8, ["F"] = 0xff9f0a},
+    {["P"] = 0xbf5af2, ["M"] = 0x6b2a8a, ["C"] = 0xe0a8ff, ["W"] = 0xffffff, ["F"] = 0xff9f0a},
+}
 
--- The harbourmaster, 11x13, drawn big (scale 4) beside his own line of dialogue while
+-- The harbourmasters, 11x13, drawn big (scale 4) beside their own line of dialogue while
 -- you're tied up at a station. Every other sprite in this game is something out in the
--- world seen at a distance; he's the only one you meet face to face, so he gets the room.
+-- world seen at a distance; these are the only ones you meet face to face, so they get the
+-- room. FOUR of them, picked by the station's own hash - so a station has the same
+-- keeper every time you dock there, and the galaxy stops being staffed by one clone.
 local ALIEN_W = 11
-local ALIEN_ART =
+local ALIEN_ART = {
+    -- the green four-eyed one, in a blue coat
     "   GGGGG   " ..
     "  GGGGGGG  " ..
     " GGGGGGGGG " ..
@@ -759,9 +1053,77 @@ local ALIEN_ART =
     "  SSSSSSS  " ..
     " SSSDDDSSS " ..
     " SS SSS SS " ..
-    "  S     S  "
-local ALIEN_PAL = {["G"] = 0x30d158, ["E"] = 0xf2f2f7, ["K"] = 0x101014,
-                   ["S"] = 0x5e5ce6, ["D"] = 0x3634a3}
+    "  S     S  ",
+    -- the cyclops: one wide eye across the whole face, orange coat
+    "    CCC    " ..
+    "   CCCCC   " ..
+    "  CCCCCCC  " ..
+    " CCEEEEECC " ..
+    " CCEKKKECC " ..
+    " CCEEEEECC " ..
+    "  CCCCCCC  " ..
+    "   CCCCC   " ..
+    "  RRRRRRR  " ..
+    " RRRDDDRRR " ..
+    " RRRRRRRRR " ..
+    " RR RRR RR " ..
+    "  R     R  ",
+    -- the wide tan one with three eyes in a row
+    "  TTTTTTT  " ..
+    " TTTTTTTTT " ..
+    "TTTTTTTTTTT" ..
+    "TTEKTEKTEKT" ..
+    "TTTTTTTTTTT" ..
+    " TTTTTTTTT " ..
+    "  TTTTTTT  " ..
+    "   TTTTT   " ..
+    "  MMMMMMM  " ..
+    " MMMKKKMMM " ..
+    " MMMMMMMMM " ..
+    " MM MMM MM " ..
+    "  M     M  ",
+    -- the pale tall one with two big dark eyes
+    "    PPP    " ..
+    "   PPPPP   " ..
+    "   PPPPP   " ..
+    "  PPPPPPP  " ..
+    "  PKKPKKP  " ..
+    "  PKKPKKP  " ..
+    "  PPPPPPP  " ..
+    "   PPPPP   " ..
+    "    PPP    " ..
+    "  VVVVVVV  " ..
+    " VVVVVVVVV " ..
+    " VV VVV VV " ..
+    "  V     V  ",
+}
+local ALIEN_PAL = {
+    {["G"] = 0x30d158, ["E"] = 0xf2f2f7, ["K"] = 0x101014,
+     ["S"] = 0x5e5ce6, ["D"] = 0x3634a3},
+    {["C"] = 0x64d2ff, ["E"] = 0xf2f2f7, ["K"] = 0x101014,
+     ["R"] = 0xff9f0a, ["D"] = 0xc77700},
+    {["T"] = 0xd08a4a, ["E"] = 0xf2f2f7, ["K"] = 0x101014, ["M"] = 0x4a4a52},
+    {["P"] = 0xe8e0f0, ["K"] = 0x2a1a3a, ["V"] = 0xbf5af2},
+}
+
+-- What they say. Picked by the station's hash like the face is, so a keeper has his own
+-- line as well as his own head. A few of them quietly teach the thing a new player would
+-- otherwise have to work out for themselves - that the good guns are sold a long way out,
+-- and that the purple ships are not a fair fight.
+local ALIEN_SAY = {
+    "ARRG! What can I do for you?",
+    "Long way from home, aren't you?",
+    "Credits first. Questions later.",
+    "Best guns are sold out in the deep.",
+    "You look like you've been shot at.",
+    "Buy something or mind the airlock.",
+    "Nice hull. Shame about the paint.",
+    "Purple ones out there. Be careful.",
+    "Cargo, guns, or gossip. Pick one.",
+    "Still flying that old thing, eh?",
+    "Deep space eats ships like yours.",
+    "Welcome in. Don't touch anything.",
+}
 
 -- Stations, 11x9. Built out of steel rather than glowing blue: plate (S), shadowed plate
 -- (D) and structural dark (K), with lit windows (W) and a beacon (C) so they still read
@@ -906,7 +1268,7 @@ function on_tick()
     -- that running away to heal is a real decision rather than an obvious one.
     local nowMs = device.time()
     if ship.sh < ship.maxsh and nowMs - lastHit > SHIELD_CALM_MS
-       and nowMs - lastRegen > SHIELD_REGEN_MS then
+       and nowMs - lastRegen > SHIELD[ship.shieldMk].regen then
         ship.sh = ship.sh + 1
         lastRegen = nowMs
     end
@@ -929,12 +1291,34 @@ function on_tick()
             if shrink < 0.05 then shrink = 0.05 end
             local sy = CY + 40 * shrink
             if sh.kind == "laser" then
-                -- Trails DOWNWARD, toward your own ship at the bottom of the screen,
-                -- which is the direction it has just come from.
-                local len = math.floor(30 * shrink) + 3
-                canvas.line(sx, sy, sx, sy + len, 0x8affc1)          -- hot core
-                canvas.line(sx - 1, sy + 1, sx - 1, sy + len, 0x30d158)
-                canvas.line(sx + 1, sy + 1, sx + 1, sy + len, 0x30d158)
+                -- The gun you're carrying decides the colour, so you can see what you're
+                -- firing without reading a number off the HUD. The shot remembers the tier
+                -- it was FIRED at rather than asking the ship now: buying a new gun while
+                -- a bolt is in flight shouldn't repaint it mid-air.
+                local t = LASER[sh.tier or 1]
+                if (sh.tier or 1) >= 8 then
+                    -- The top tier isn't a beam at all. A shock ball: a bright core inside
+                    -- a ragged halo that pulses as it travels, so the last upgrade in the
+                    -- game announces itself instead of just being a slightly better line.
+                    local r = math.floor(9 * shrink) + 2
+                    local cy = sy + r
+                    canvas.circle(sx, cy, r, t.glow, true)
+                    canvas.circle(sx, cy, math.max(1, r - 2), t.core, true)
+                    -- Arcs flicking off the sides, on every other step of its flight. The
+                    -- flicker is what makes it read as electrical rather than as a bead.
+                    if (sh.dist // 130) % 2 == 0 then
+                        canvas.rect(sx - r - 2, cy - 1, 2, 3, t.glow)
+                        canvas.rect(sx + r, cy - 1, 2, 3, t.glow)
+                        canvas.rect(sx - 1, cy - r - 2, 3, 2, t.glow)
+                    end
+                else
+                    -- Trails DOWNWARD, toward your own ship at the bottom of the screen,
+                    -- which is the direction it has just come from.
+                    local len = math.floor(30 * shrink) + 3
+                    canvas.line(sx, sy, sx, sy + len, t.core)        -- hot core
+                    canvas.line(sx - 1, sy + 1, sx - 1, sy + len, t.glow)
+                    canvas.line(sx + 1, sy + 1, sx + 1, sy + len, t.glow)
+                end
             else
                 local sz = math.floor(5 * shrink) + 1
                 canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz, 0xff9f0a)
@@ -950,20 +1334,28 @@ function on_tick()
             local sz = math.floor(600 / math.max(dist, 60) * 5)
             if sz < 3 then sz = 3 end
             if sz > 26 then sz = 26 end
-            canvas.rect(px - sz / 2, CY - sz / 2, sz, sz, 0xff9f0a)
-            canvas.rect(px - sz / 4, CY - sz / 4, sz / 2, sz / 2, 0xffe9a8)
+            -- A marauder's bolt comes in purple. That's not decoration: it hits for nearly
+            -- twice what a raider's does, and the colour is the only warning you get in
+            -- time to decide whether to take it on the shields or get out of the way.
+            local heavy = (b.kind or 1) == 3
+            canvas.rect(px - sz / 2, CY - sz / 2, sz, sz, heavy and 0xbf5af2 or 0xff9f0a)
+            canvas.rect(px - sz / 4, CY - sz / 4, sz / 2, sz / 2,
+                        heavy and 0xe0a8ff or 0xffe9a8)
         end
     end
 
-    -- Pirates: red, growing as they close on you.
+    -- Raiders, growing as they close on you. Each sort has its own art, its own dimensions
+    -- and its own sense of scale, so a marauder looms noticeably earlier than a raider at
+    -- the same range and an interceptor stays a speck until it's nearly on top of you.
     for _, pr in ipairs(pirates) do
         local px, dist = project(pr.x, pr.y)
         if px and dist < 3000 then
-            local sc = math.floor(2200 / dist)
+            local k = PIRATE_KINDS[pr.kind or 1]
+            local sc = math.floor(k.near / dist)
             if sc < 1 then sc = 1 end
             if sc > 7 then sc = 7 end
-            canvas.sprite(px - (PIRATE_W * sc) / 2, CY - (7 * sc) / 2,
-                          PIRATE_W, PIRATE_ART, PIRATE_PAL, sc)
+            canvas.sprite(px - (k.w * sc) / 2, CY - (k.h * sc) / 2,
+                          k.w, PIRATE_ART[pr.kind or 1], PIRATE_PAL[pr.kind or 1], sc)
         end
     end
 
@@ -978,7 +1370,10 @@ function on_tick()
             local sc = math.floor(2200 / math.max(dist, 60))
             if sc < 1 then sc = 1 end
             if sc > 7 then sc = 7 end
-            local r = math.floor((3 + age * 16) * sc / 2)
+            -- A marauder goes up half again as big. Killing one is the hardest thing you
+            -- can do out there, and it should look unmistakably different from swatting a
+            -- raider - otherwise the win reads exactly like every other win.
+            local r = math.floor((3 + age * 16) * sc / 2 * (b.big and 1.5 or 1))
             local col = (age < 0.25 and 0xffffff) or (age < 0.5 and 0xffe9a8)
                         or (age < 0.75 and 0xff9f0a) or 0xff453a
             -- ring: four blocks pushed out from the centre rather than a real circle,
@@ -987,7 +1382,11 @@ function on_tick()
             canvas.rect(px - r, CY - t / 2, r * 2, t, col)
             canvas.rect(px - t / 2, CY - r, t, r * 2, col)
             if age < 0.55 then
-                local c = math.floor(r * 0.7)
+                -- Never smaller than a single pixel. A kill far enough away has a blast
+                -- radius of 1, and seven tenths of that rounds to NOTHING - which asked
+                -- the engine to draw a zero-sized rectangle. Harmless on screen, but it
+                -- is exactly the sort of thing that is a real complaint on real hardware.
+                local c = math.max(1, math.floor(r * 0.7))
                 canvas.rect(px - c / 2, CY - c / 2, c, c, age < 0.3 and 0xffffff or 0xffe9a8)
             end
             -- debris, thrown out along the diagonals
@@ -1035,10 +1434,13 @@ function on_tick()
 
     drawCompass()
 
-    -- The ship, banking into the turn.
+    -- The ship, banking into the turn. Tied up at a station it drops to sit just above the
+    -- HUD: the shop needs the middle band, and this stops the bottom row of buttons being
+    -- drawn straight across your own hull. It reads as being moored below the window.
     local frame = 2
     if ship.turn < -0.012 then frame = 1 elseif ship.turn > 0.012 then frame = 3 end
-    canvas.sprite(CX - (SHIP_W * SHIP_SCALE) / 2, 170, SHIP_W, SHIP[frame], PALETTE, SHIP_SCALE)
+    local shipY = (docked and dockedOn == "station") and 186 or 170
+    canvas.sprite(CX - (SHIP_W * SHIP_SCALE) / 2, shipY, SHIP_W, SHIP[frame], PALETTE, SHIP_SCALE)
 
     -- Readouts: where we are, and where the nearest station is. Without this a compass
     -- alone just gets you lost in a black void.
@@ -1052,7 +1454,12 @@ function on_tick()
     local shFrac = ship.sh / ship.maxsh
     canvas.rect(120, H - 20, 90, 5, 0x2c2c2e)
     if shFrac > 0 then
-        canvas.rect(120, H - 20, math.floor(90 * shFrac), 5, 0x0a84ff)
+        -- At least one pixel of blue for any shielding at all. This only started
+        -- mattering once shields could reach 200: a single point out of 200 is under half
+        -- a pixel of a 90-wide bar, so it floored to zero and the bar claimed you had
+        -- nothing left when you still had something. Bigger tanks made a rounding
+        -- decision that was fine at 50 into a lie.
+        canvas.rect(120, H - 20, math.max(1, math.floor(90 * shFrac)), 5, 0x0a84ff)
     end
     local frac = ship.hp / ship.maxhp
     local barW = math.floor(90 * frac)
@@ -1081,8 +1488,9 @@ function on_tick()
 
     -- The harbourmaster himself, on the greeting page only. Once you're at the counter the
     -- four buttons need the whole panel, and you've already been said hello to.
-    if docked and dockedOn == "station" and dockMenu == "main" then
-        canvas.sprite(8, 50, ALIEN_W, ALIEN_ART, ALIEN_PAL, 4)
+    if docked and dockedOn == "station" and dockMenu == "main" and nearest then
+        local face = keeperOf(nearest.sx, nearest.sy)
+        canvas.sprite(8, 50, ALIEN_W, ALIEN_ART[face], ALIEN_PAL[face], 4)
     end
 
     -- Dock buttons, drawn from the same list the touch handler reads. A button you can't
@@ -1158,9 +1566,16 @@ function on_tick()
     end
 
     -- His line of dialogue, beside his head, on the greeting page only: at the counter the
-    -- four buttons need that space, and you've already been greeted.
-    if docked and dockedOn == "station" and dockMenu == "main" then
-        screen.label(13, 58, 68, "ARRG! What can I do for you?", 0x9ad0ff)
+    -- four buttons need that space, and you've already been greeted. On the OUTFITTER page
+    -- the same strip of screen earns its keep differently - it tells you what you're
+    -- currently flying, which is the one fact you need while deciding whether a shelf is
+    -- worth the money. One slot, two jobs, never both at once.
+    if docked and dockedOn == "station" and dockMenu == "main" and nearest then
+        local _, line = keeperOf(nearest.sx, nearest.sy)
+        screen.label(13, 58, 68, ALIEN_SAY[line], 0x9ad0ff)
+    elseif docked and dockedOn == "station" and dockMenu == "upgrades" then
+        screen.label(13, SHOP_X, 38, "NOW " .. LASER[ship.laser].name .. " (" .. ship.laser
+                     .. ")  SH" .. ship.shieldMk .. "  HULL" .. ship.hullMk, 0x8e8e93)
     else
         screen.hide(13)
     end
