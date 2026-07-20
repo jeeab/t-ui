@@ -78,9 +78,9 @@
       "id": "stars",
       "name": "Deep Space",
       "kind": "game",
-      "desc": "Explore a galaxy: fight pirates, salvage wrecks, upgrade your ship at steel stations.",
-      "ver": "15",
-      "bytes": 75197,
+      "desc": "Explore a galaxy: hunt pirates for bounty, salvage wrecks, upgrade at steel stations.",
+      "ver": "16",
+      "bytes": 82052,
       "url": "apps/stars/main.lua"
     }
   ]

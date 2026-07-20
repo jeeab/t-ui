@@ -25,8 +25,67 @@
 local W, H = 320, 240
 local CX, CY = W / 2, H / 2
 local STARS = 200
+
+-- ---- how wide is that text, really? -------------------------------------------
+-- The screen's font is PROPORTIONAL: a 'W' is 18 pixels and an 'i' is 4.5. This code
+-- used to assume a flat 7 pixels for every character, which was wrong in both
+-- directions and wrong by a lot - capitals actually average 11.6. Two visible bugs came
+-- out of that one guess: long lines (the harbourmaster's greeting especially) ran off
+-- the right-hand edge of the screen, and every "centred" caption was measured short and
+-- so sat too far right, crowding or spilling past the edge of its own button.
+--
+-- These are the real advance widths of the firmware's font, in QUARTER-pixels so the
+-- whole table fits in one byte per character with no meaningful rounding error. Index is
+-- the ASCII code minus 31; anything outside 32..126 is measured as a space.
+local GLYPH_Q = "\017\017\025\045\040\054\044\014\022\022\026\037\014\024\014"
+                .. "\022\043\024\037\036\043\037\040\038\041\040\014\014\037\037"
+                .. "\037\037\066\047\048\046\053\043\041\050\052\020\033\046\038"
+                .. "\061\052\054\046\054\046\040\038\050\046\072\043\042\042\021"
+                .. "\022\021\037\032\038\044\044\036\044\039\022\044\044\018\018"
+                .. "\040\018\068\044\041\044\044\026\032\026\043\036\058\035\036"
+                .. "\033\022\019\022\037"
+
+local function textW(s)
+    s = tostring(s)
+    local n = 0
+    for i = 1, #s do
+        local c = s:byte(i)
+        if c < 32 or c > 126 then c = 32 end
+        n = n + GLYPH_Q:byte(c - 31)
+    end
+    return n / 4
+end
+
+-- Left-hand x that puts text of this width centred inside a box. One helper so the
+-- drawing code can never centre one thing correctly and another thing by eye.
+local function centreX(s, x, w)
+    return x + math.floor((w - textW(s)) / 2)
+end
+
+-- Break a line so each piece fits in maxw pixels. Only ever returns two pieces, because
+-- that's all the room there is beside the harbourmaster's head - a third line would run
+-- into the shop buttons underneath. Splits on spaces; a single word too long to fit is
+-- left alone rather than chopped mid-word, since every line in the game is written to
+-- fit and a broken word would look worse than a slight overhang.
+local function wrap2(s, maxw)
+    if textW(s) <= maxw then return s, nil end
+    local best = nil
+    for i = 1, #s do
+        if s:sub(i, i) == " " and textW(s:sub(1, i - 1)) <= maxw then best = i end
+    end
+    if not best then return s, nil end
+    return s:sub(1, best - 1), s:sub(best + 1)
+end
 local FOV = 1.05                -- half field of view, radians (~60 degrees)
 local SECTOR = 1000             -- world units per sector
+-- World units per frame at ONE notch of throttle; top notch is three times this. It ran
+-- at 6 (so 18 a frame flat out), which crossed a whole 1000-unit sector in under two
+-- seconds - the galaxy went by faster than it could fill up with anything. At 3 the same
+-- crossing takes about four seconds and the map is effectively twice the size. This is
+-- the ONE number to change if cruising still feels wrong: lower is slower.
+-- Deliberately NOT applied to the starfield, which still streaks at the old rate off the
+-- throttle notch, so flat out still LOOKS fast - it just covers less ground.
+local WARP_SPEED = 3
 -- A 16-point compass. You steer one point at a time, so every heading has a name and
 -- every tap is a definite, repeatable course change - not a nudge you have to eyeball.
 local DIRS = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -61,14 +120,14 @@ local SHIELD_CALM_MS = 3000      -- how long since the last hit before it starts
 -- upgrade is a big obvious jump (it's the one that teaches you upgrades exist) and the
 -- last is a long haul you fly a long way to afford.
 local LASER = {
-    {name = "GREEN",  dmg = 1,  cost = 0,    core = 0x8affc1, glow = 0x30d158},
-    {name = "BLUE",   dmg = 2,  cost = 120,  core = 0x9ad0ff, glow = 0x0a84ff},
-    {name = "YELLOW", dmg = 3,  cost = 200,  core = 0xfff3a8, glow = 0xffd60a},
-    {name = "RED",    dmg = 4,  cost = 320,  core = 0xff9d95, glow = 0xff453a},
-    {name = "PURPLE", dmg = 6,  cost = 480,  core = 0xe0a8ff, glow = 0xbf5af2},
-    {name = "ORANGE", dmg = 8,  cost = 700,  core = 0xffd3a0, glow = 0xff9f0a},
-    {name = "WHITE",  dmg = 11, cost = 1000, core = 0xffffff, glow = 0xc7c7cc},
-    {name = "SHOCK",  dmg = 15, cost = 1500, core = 0xaaffcc, glow = 0x30d158},
+    {name = "GREEN",  dmg = 1,  cost = 0,     core = 0x8affc1, glow = 0x30d158},
+    {name = "BLUE",   dmg = 2,  cost = 900,   core = 0x9ad0ff, glow = 0x0a84ff},
+    {name = "YELLOW", dmg = 3,  cost = 1500,  core = 0xfff3a8, glow = 0xffd60a},
+    {name = "RED",    dmg = 4,  cost = 2400,  core = 0xff9d95, glow = 0xff453a},
+    {name = "PURPLE", dmg = 6,  cost = 3600,  core = 0xe0a8ff, glow = 0xbf5af2},
+    {name = "ORANGE", dmg = 8,  cost = 5200,  core = 0xffd3a0, glow = 0xff9f0a},
+    {name = "WHITE",  dmg = 11, cost = 7500,  core = 0xffffff, glow = 0xc7c7cc},
+    {name = "SHOCK",  dmg = 15, cost = 11000, core = 0xaaffcc, glow = 0x30d158},
 }
 
 -- Shields get BOTH bigger and quicker to come back, because either one alone is a
@@ -76,20 +135,20 @@ local LASER = {
 -- and a fast trickle on a small bar still pops in one exchange of fire.
 local SHIELD = {
     {max = 50,  regen = 900, cost = 0},
-    {max = 75,  regen = 750, cost = 150},
-    {max = 110, regen = 600, cost = 340},
-    {max = 150, regen = 450, cost = 620},
-    {max = 200, regen = 320, cost = 1100},
+    {max = 75,  regen = 750, cost = 1100},
+    {max = 110, regen = 600, cost = 2500},
+    {max = 150, regen = 450, cost = 4600},
+    {max = 200, regen = 320, cost = 8000},
 }
 
 -- Hull is the expensive stat to actually use, since damage to it costs Parts to undo.
 -- A bigger hull is therefore worth less than it looks - it buys you survival, not thrift.
 local HULL = {
     {max = 100, cost = 0},
-    {max = 140, cost = 180},
-    {max = 190, cost = 400},
-    {max = 250, cost = 760},
-    {max = 320, cost = 1300},
+    {max = 140, cost = 1300},
+    {max = 190, cost = 2900},
+    {max = 250, cost = 5500},
+    {max = 320, cost = 9500},
 }
 
 -- Marks decide the ceilings, so this has to run after anything that changes them AND
@@ -108,17 +167,26 @@ local DOCK_RANGE = 260
 local WRECK_RANGE = 240
 local REPAIR_COST = 10           -- Parts for a full hull repair
 local SALVAGE_PARTS = 5          -- Parts per derelict
-local MISSILE_COST = 10          -- credits per missile - exactly one raider's bounty
+local MISSILE_COST = 25          -- credits per missile - exactly one raider's bounty
 -- Bounties now live per enemy type in PIRATE_KINDS: a marauder is worth four raiders,
 -- which is what stops the tough ones from being purely a tax on flying outward.
 local PARTS_PACK = 5             -- Parts you get for buying a pack at a station
-local PARTS_COST = 40            -- deliberately poor value: a way out, not a shortcut
+local PARTS_COST = 150           -- deliberately poor value: a way out, not a shortcut
 -- Selling MUST pay less per Part than buying, or the shop is a money printer: buy five
--- for 40, sell them back for more, repeat forever. 25 out against 40 in keeps the trade
--- honest - it turns a pile of salvage into missiles, it doesn't mint credits.
-local PARTS_SELL = 25            -- credits for selling a pack of PARTS_PACK
+-- for 150, sell them back for more, repeat forever. 40 out against 150 in keeps the
+-- trade honest - it turns a pile of salvage into missiles, it doesn't mint credits.
+-- Kept deliberately LOW now that hulks no longer pay in credits: if a wreck's five parts
+-- could be sold for real money, salvage would just go straight back to being the safest
+-- way to get rich and the whole point of paying bounties properly would be lost. A
+-- stripped hulk is worth about 45c all in; a marauder is worth 120c. Fighting wins.
+local PARTS_SELL = 40            -- credits for selling a pack of PARTS_PACK
 local PIRATE_PARTS = 2           -- salvaged off a kill, when a kill gives anything
 local PIRATE_PARTS_CHANCE = 0.34 -- how often a wreck is worth stripping
+-- Per-frame chance of another pirate turning up: a floor that always applies, plus a
+-- share that only pays out while the sector is under its population cap. See the spawn
+-- call for the arithmetic and the measured fill times.
+local SPAWN_IDLE = 0.008
+local SPAWN_URGE = 0.040
 local lastRegen = 0
 local stars = {}
 local ok = false
@@ -360,12 +428,17 @@ end
 -- fragile - it closes before you've finished turning, so it punishes flying straight.
 -- The marauder is the purple one: three times the hull, hits nearly twice as hard, and
 -- slow enough that you can run - which is usually the right call until your gun is better.
+-- Bounties carry the whole economy now. They used to be pocket change next to a derelict
+-- (10c for a raider against ~70c for a hulk you could strip in total safety), which meant
+-- the most profitable thing in the game was also the least dangerous one - the reason it
+-- was possible to get rich and bored at the same time. Fighting is now where the money
+-- is, and a marauder is worth roughly what a whole wreck used to be.
 local PIRATE_KINDS = {
-    {name = "raider",      hpMul = 1,  bounty = 10, dmg = 6,  speed = 3.0, cool = 1.0,
+    {name = "raider",      hpMul = 1,  bounty = 25, dmg = 6,  speed = 3.0, cool = 1.0,
      w = 9,  h = 7, near = 2200},
-    {name = "interceptor", hpMul = 0.5, bounty = 15, dmg = 4, speed = 5.5, cool = 0.55,
+    {name = "interceptor", hpMul = 0.5, bounty = 40, dmg = 4, speed = 5.5, cool = 0.55,
      w = 7,  h = 5, near = 1700},
-    {name = "marauder",    hpMul = 3,  bounty = 40, dmg = 11, speed = 2.2, cool = 1.4,
+    {name = "marauder",    hpMul = 3,  bounty = 120, dmg = 11, speed = 2.2, cool = 1.4,
      w = 11, h = 9, near = 2800},
 }
 
@@ -671,7 +744,11 @@ local function salvageWreck()
     if isSalvaged(w.sx, w.sy) then return false end
     markSalvaged(w.sx, w.sy)
     parts = parts + SALVAGE_PARTS
-    credits = credits + 25 + (hash(w.sx, w.sy, 5) % 40)
+    -- A hulk is a source of PARTS, not of money. It used to hand over 25-64 credits on
+    -- top of the parts, which quietly made salvage the best-paid job in the galaxy and
+    -- left no reason to ever pick a fight. What's left is loose change - enough that
+    -- stripping a wreck isn't nothing, not enough to live on.
+    credits = credits + (hash(w.sx, w.sy, 5) % 11)
     if hash(w.sx, w.sy, 9) % 3 == 0 and missiles < 6 then missiles = missiles + 1 end
     w.done = true
     device.beep(true)
@@ -730,6 +807,9 @@ local BTN_X, BTN_W, BTN_H = 92, 136, 26
 -- "PURPLE LASER (5)  480c" is 22 characters and the whole value of naming it is lost if it
 -- gets cut off, so that page gets nearly the full width of the screen.
 local SHOP_X, SHOP_W = 30, 260
+-- Where the harbourmaster's speech starts: clear of his portrait, which is drawn at x 8
+-- and is ALIEN_W (11) at scale 4 = 44 pixels wide, so it ends at 52.
+local SAY_X = 58
 local BTN_SLOT = {20, 21, 22, 23}      -- label ids, well clear of the HUD's own slots
 local function dockButtons()
     local b = {}
@@ -1200,7 +1280,12 @@ function on_open()
     for i = 1, STARS do stars[i] = {}; reseed(stars[i], true) end
     findNearest()
     hint = device.time() + 6000
-    screen.label(2, 14, 210, "A/D turn  W/S speed  L laser  P missile", 0x8e8e93)
+    -- Centred rather than pinned at x=14, where it overran the right edge by a couple of
+    -- pixels and quietly clipped the "e" off "missile" - the very first thing the game
+    -- ever shows you. At 308 pixels this is the widest line in the app; centring it
+    -- leaves 6 clear either side and can't drift if the wording changes.
+    local hintText = "A/D turn  W/S speed  L laser  P missile"
+    screen.label(2, centreX(hintText, 0, W), 210, hintText, 0x8e8e93)
 end
 
 function on_tick()
@@ -1226,7 +1311,7 @@ function on_tick()
 
     -- Fly along the heading, not the eased view angle: the picture lags a little for
     -- looks, but the ship goes exactly where you pointed it.
-    local speed = ship.warp * 6
+    local speed = ship.warp * WARP_SPEED
     if speed > 0 then
         ship.x = ship.x + math.sin(ship.heading) * speed
         ship.y = ship.y + math.cos(ship.heading) * speed
@@ -1258,7 +1343,20 @@ function on_tick()
 
     -- Combat runs every frame. Pirates only appear in lawless regions, which is what
     -- makes the danger rating something you can learn rather than random punishment.
-    if math.random() < 0.004 then spawnPirate() end
+    --
+    -- The RATE, not the cap, was what made red space feel empty. This rolled a flat 0.4%
+    -- once a frame - about one pirate every eight seconds at best - so a sector allowed
+    -- five of them needed a solid minute of loitering to actually field five, and anyone
+    -- flying through simply outran the spawner and saw nothing. Now the chance scales
+    -- with how far UNDER its cap the sector is: somewhere hostile fills up fast and then
+    -- idles, so a red region is busy the moment you arrive instead of half an hour later.
+    -- Measured at the 30-a-second tick: a 5-pirate sector used to take 41 seconds to fill
+    -- and now takes 6. Raise SPAWN_URGE for a rougher galaxy, lower it for a calmer one.
+    local cap = maxPiratesHere()
+    if #pirates < cap then
+        local short = (cap - #pirates) / cap        -- 1.0 = empty, 0.2 = nearly full
+        if math.random() < SPAWN_IDLE + SPAWN_URGE * short then spawnPirate() end
+    end
     stepPirates()
     stepShots()
     stepIncoming()
@@ -1534,8 +1632,13 @@ function on_tick()
         screen.label(5, 8, H - 40, "no station in range", 0x4a4a52)
     end
 
-    -- Both currencies together: credits buy missiles, Parts fix hulls.
-    screen.label(6, 228, H - 40, credits .. "c  " .. parts .. "p", 0xffd60a)
+    -- Both currencies together: credits buy missiles, Parts fix hulls. RIGHT-ALIGNED to
+    -- the edge rather than pinned at a fixed x, because the numbers grew: now that the
+    -- shock laser costs 11000c this readout can be five digits wide, and from a fixed
+    -- start it ran off the screen the moment you got rich. Measuring it each frame means
+    -- it can never overflow again however big the pile gets.
+    local purse = credits .. "c  " .. parts .. "p"
+    screen.label(6, W - 6 - math.ceil(textW(purse)), H - 40, purse, 0xffd60a)
 
     -- One line, two jobs, resolved by priority. A pickup ("+2 PARTS") takes it for a
     -- second or so because it just happened; otherwise, whenever you're inside docking
@@ -1549,7 +1652,7 @@ function on_tick()
         line = nearest.name
     end
     if line then
-        screen.label(12, math.floor((W - #line * 7) / 2), 44, line, 0x9ad0ff)
+        screen.label(12, centreX(line, 0, W), 44, line, 0x9ad0ff)
     else
         screen.hide(12)
     end
@@ -1560,7 +1663,7 @@ function on_tick()
     -- harbourmaster is on screen saying hello. Top centre is empty on every screen.
     if docked then
         local cap = dockedOn == "wreck" and "DERELICT" or "DOCKED"
-        screen.label(9, math.floor((W - #cap * 7) / 2), 22, cap, 0x30d158)
+        screen.label(9, centreX(cap, 0, W), 22, cap, 0x30d158)
     else
         screen.hide(9)
     end
@@ -1572,12 +1675,19 @@ function on_tick()
     -- worth the money. One slot, two jobs, never both at once.
     if docked and dockedOn == "station" and dockMenu == "main" and nearest then
         local _, line = keeperOf(nearest.sx, nearest.sy)
-        screen.label(13, 58, 68, ALIEN_SAY[line], 0x9ad0ff)
+        -- Two lines, wrapped to the gap between the alien's head and the right edge.
+        -- Nine of the twelve greetings are too long for one line in the real font, which
+        -- is why they used to disappear off the side of the screen mid-sentence.
+        local a, b = wrap2(ALIEN_SAY[line], W - SAY_X - 6)
+        screen.label(13, SAY_X, 60, a, 0x9ad0ff)
+        if b then screen.label(14, SAY_X, 80, b, 0x9ad0ff) else screen.hide(14) end
     elseif docked and dockedOn == "station" and dockMenu == "upgrades" then
+        screen.hide(14)
         screen.label(13, SHOP_X, 38, "NOW " .. LASER[ship.laser].name .. " (" .. ship.laser
                      .. ")  SH" .. ship.shieldMk .. "  HULL" .. ship.hullMk, 0x8e8e93)
     else
         screen.hide(13)
+        screen.hide(14)
     end
 
     -- Button captions ride on top of the boxes drawn on the canvas, and every reserved
@@ -1589,7 +1699,7 @@ function on_tick()
         if b then
             -- Centred vertically from the button's own height, since the exchange page
             -- uses shorter rows than the greeting does.
-            screen.label(slot, b.x + math.floor((b.w - #b.text * 7) / 2),
+            screen.label(slot, centreX(b.text, b.x, b.w),
                          b.y + math.floor((b.h - 12) / 2), b.text,
                          b.on and 0xffffff or 0x6a6a72)
         else
