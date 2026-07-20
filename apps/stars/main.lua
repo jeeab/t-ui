@@ -2,11 +2,13 @@
 -- Fly a ship through an endless, generated galaxy.
 --
 --   A / D  turn one compass point   W faster / S slower (S all the way = stop)
---   L  laser (3 hits to kill)   P  phoenix missile (one shot, one kill)
+--   L  laser (5-8 hits to kill, worse regions breed tougher pirates)
+--   P  phoenix missile (one shot, one kill)
 --   M  map of nearby space      tap sides to turn
 --
--- Stop beside a STATION to repair, and tap to buy missiles.
--- Stop beside a DERELICT to salvage it.
+-- Stop beside a STATION to meet the harbourmaster: repair, or exchange (sell salvage,
+-- buy missiles and Parts). Nothing can shoot you while you're tied up alongside.
+-- Stop beside a DERELICT to salvage it - out in the open, where you CAN still be shot.
 --
 -- The galaxy is NOT stored anywhere. Every sector's contents come from a hash of its
 -- coordinates and the world seed, so space is effectively infinite, costs no memory,
@@ -48,6 +50,10 @@ local MISSILE_COST = 10          -- credits per missile - exactly one pirate's b
 local PIRATE_BOUNTY = 10         -- credits per kill
 local PARTS_PACK = 5             -- Parts you get for buying a pack at a station
 local PARTS_COST = 40            -- deliberately poor value: a way out, not a shortcut
+-- Selling MUST pay less per Part than buying, or the shop is a money printer: buy five
+-- for 40, sell them back for more, repeat forever. 25 out against 40 in keeps the trade
+-- honest - it turns a pile of salvage into missiles, it doesn't mint credits.
+local PARTS_SELL = 25            -- credits for selling a pack of PARTS_PACK
 local PIRATE_PARTS = 2           -- salvaged off a kill, when a kill gives anything
 local PIRATE_PARTS_CHANCE = 0.34 -- how often a wreck is worth stripping
 local lastRegen = 0
@@ -68,6 +74,9 @@ local incoming = {}          -- pirate shots on their way to you, so you can SEE
 local blasts = {}            -- pirate death explosions: world position + when it started
 local docked, dockedOn = false, nil
 local dockedWreck = nil      -- the derelict we're alongside, so Salvage knows what to strip
+-- Which page of the station shop is up: the harbourmaster's greeting, or the counter.
+-- Reset the moment you undock, so pulling away and coming back always starts at hello.
+local dockMenu = "main"      -- "main" | "exchange"
 local hitFrom = 0            -- bearing of the last hit, so the flash shows WHERE from
 local showMap = false
 -- One popup line, shared by station names and pickups. Sharing it means a "+2 PARTS"
@@ -229,17 +238,34 @@ local function maxPiratesHere()
     return n
 end
 
+-- A station is a safe harbour: tied up alongside, nobody can touch you. This is not just
+-- a kindness - reading a shop menu while bolts land is the one moment in the game where
+-- you're being punished for something that isn't flying. A DERELICT is deliberately NOT
+-- safe: stripping a hulk in open space should stay a risk you took, which is what makes
+-- wrecks worth more than shopping.
+local function safeHarbour()
+    return docked and dockedOn == "station"
+end
+
 local function spawnPirate()
+    if safeHarbour() then return end                    -- nobody jumps a station
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
-    if dangerAt(csx, csy) < 62 then return end          -- most space is quiet
+    local d = dangerAt(csx, csy)
+    if d < 62 then return end                           -- most space is quiet
     if #pirates >= maxPiratesHere() then return end
     -- appear somewhere ahead-ish, far enough away to be seen coming
     local ang = ship.look + (math.random() - 0.5) * 2.2
     local dist = 1600 + math.random() * 900
+    -- Tougher than they were, and tougher still where the law is thinnest. The region's
+    -- danger rating already decides HOW MANY jump you; making it decide how hard they are
+    -- to kill as well is what stops lawless space from being merely busy. Five laser hits
+    -- at the quiet end, eight at the worst - a real burst of fire, not a tap.
+    local hp = 5 + math.floor((d - 62) / 13)
+    if hp > 8 then hp = 8 end
     pirates[#pirates + 1] = {
         x = ship.x + math.sin(ang) * dist,
         y = ship.y + math.cos(ang) * dist,
-        hp = 3,
+        hp = hp,
         cool = 800 + math.random() * 1500,
     }
 end
@@ -273,7 +299,10 @@ local function stepShots(dt)
             if math.abs(pd - sh.dist) < 420 then
                 local rel = angleDiff(math.atan(dx, dy), sh.ang)
                 if math.abs(rel) < 0.42 then
-                    p.hp = p.hp - (sh.kind == "laser" and 1 or 3)
+                    -- The phoenix is one shot, one kill, and stays that way now pirates
+                    -- have up to 8 hull. Fixed damage of 3 would have quietly demoted the
+                    -- missile to "a slightly better laser" the moment they got tougher.
+                    p.hp = p.hp - (sh.kind == "laser" and 1 or 99)
                     hit = true
                     if p.hp <= 0 then
                         -- Leave a blast behind at the pirate's own position, so the kill
@@ -300,6 +329,13 @@ end
 
 -- Enemy bolts close on you each frame. They only hurt when they arrive.
 local function stepIncoming()
+    -- Made it inside the perimeter. Bolts already in flight veer off rather than landing
+    -- on a docked ship, so diving for a station is a genuine escape and not a trick that
+    -- still costs you the last two hits.
+    if safeHarbour() then
+        for i = #incoming, 1, -1 do table.remove(incoming, i) end
+        return
+    end
     for i = #incoming, 1, -1 do
         local b = incoming[i]
         b.dist = b.dist - 55
@@ -333,12 +369,19 @@ end
 
 local function stepPirates()
     local now = device.time()
+    local safe = safeHarbour()
     for pi = #pirates, 1, -1 do
         local p = pirates[pi]
         local dx, dy = p.x - ship.x, p.y - ship.y
         local d = math.sqrt(dx * dx + dy * dy)
         if d > 5000 then
             table.remove(pirates, pi)                    -- outrun: warping away works
+        elseif safe then
+            -- Docked. They sheer away from the station's guns instead of hanging in the
+            -- air politely not shooting - you can watch them give up, which tells you the
+            -- harbour is doing something rather than the game having quietly paused.
+            p.x = p.x + (dx / d) * 9
+            p.y = p.y + (dy / d) * 9
         else
             -- close in
             local step = 3
@@ -361,8 +404,12 @@ end
 -- Salvage used to fire off silently the moment you drifted close enough, which meant the
 -- best moment in the game happened without you doing anything.
 local function stepDocking()
+    local wasDocked = docked
     docked, dockedOn, dockedWreck = false, nil, nil
-    if ship.warp > 0 then return end          -- you dock by stopping
+    if ship.warp > 0 then
+        if wasDocked then dockMenu = "main" end   -- pulled away: next visit starts at hello
+        return                                    -- you dock by stopping
+    end
 
     -- A derelict close by? Offer to strip it. Each hull can only be stripped once.
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
@@ -422,6 +469,18 @@ local function buyParts()
     return true
 end
 
+-- Turning a pile of salvage into spending money. Sold as a pack rather than one at a
+-- time so a hold full of Parts doesn't mean forty taps.
+local function sellParts()
+    if not docked or dockedOn ~= "station" then return false end
+    if parts < PARTS_PACK then return false end
+    parts = parts - PARTS_PACK
+    credits = credits + PARTS_SELL
+    popup("+" .. PARTS_SELL .. " CREDITS", 1400)
+    device.beep(true)
+    return true
+end
+
 -- Salvage: now a button you press, and the payout is Parts rather than credits, because
 -- Parts are what keep your hull alive. Wrecks are the reason to leave the shipping lanes.
 local function salvageWreck()
@@ -442,29 +501,40 @@ end
 -- tappable where nothing is drawn). Sits in the middle band, clear of the turn thirds at
 -- the screen edges and the throttle strip along the bottom.
 local BTN_X, BTN_W, BTN_H = 92, 136, 26
-local BTN_SLOT = {20, 21, 22}          -- label ids, well clear of the HUD's own slots
+local BTN_SLOT = {20, 21, 22, 23}      -- label ids, well clear of the HUD's own slots
 local function dockButtons()
     local b = {}
+    local top, h = 62, BTN_H
     if not docked then return b end
     if dockedOn == "station" then
-        if ship.hp < ship.maxhp then
-            b[#b + 1] = {text = "REPAIR " .. REPAIR_COST .. "p", act = repairHull,
-                         on = parts >= REPAIR_COST}
-        end
-        if missiles < 6 then
+        if dockMenu == "exchange" then
+            -- The counter. Four rows, so they start higher and sit tighter; the last one
+            -- overlaps your own ship at y 170, which is fine because the buttons are drawn
+            -- see-through and it reads as glass rather than as a collision.
+            top, h = 62, 24
+            b[#b + 1] = {text = "SELL " .. PARTS_PACK .. "p +" .. PARTS_SELL .. "c",
+                         act = sellParts, on = parts >= PARTS_PACK}
             b[#b + 1] = {text = "REARM " .. MISSILE_COST .. "c", act = buyMissile,
-                         on = credits >= MISSILE_COST}
+                         on = credits >= MISSILE_COST and missiles < 6}
+            b[#b + 1] = {text = "BUY " .. PARTS_PACK .. "p " .. PARTS_COST .. "c",
+                         act = buyParts, on = credits >= PARTS_COST}
+            b[#b + 1] = {text = "BACK", on = true,
+                         act = function() dockMenu = "main"; device.beep(); return true end}
+        else
+            -- The greeting. Deliberately only two choices: the harbourmaster is asking a
+            -- question, and a question with two answers reads faster than a price list.
+            -- Sits low enough to leave the alien and his line of dialogue the top half.
+            top, h = 110, BTN_H
+            b[#b + 1] = {text = "EXCHANGE", on = true,
+                         act = function() dockMenu = "exchange"; device.beep(); return true end}
+            b[#b + 1] = {text = "REPAIR " .. REPAIR_COST .. "p", act = repairHull,
+                         on = parts >= REPAIR_COST and ship.hp < ship.maxhp}
         end
-        b[#b + 1] = {text = "BUY " .. PARTS_PACK .. "p " .. PARTS_COST .. "c",
-                     act = buyParts, on = credits >= PARTS_COST}
     elseif dockedOn == "wreck" and dockedWreck and not isSalvaged(dockedWreck.sx, dockedWreck.sy) then
         b[#b + 1] = {text = "SALVAGE +" .. SALVAGE_PARTS .. "p", act = salvageWreck, on = true}
     end
-    -- Stacked below the popup line (y 44) and above the DOCKED caption (y 152) and the
-    -- ship itself (y 170). Three is the most ever offered, at a station with a damaged
-    -- hull and room for missiles.
     for i, btn in ipairs(b) do
-        btn.x, btn.y, btn.w, btn.h = BTN_X, 62 + (i - 1) * (BTN_H + 4), BTN_W, BTN_H
+        btn.x, btn.y, btn.w, btn.h = BTN_X, top + (i - 1) * (h + 4), BTN_W, h
     end
     return b
 end
@@ -672,6 +742,27 @@ local PIRATE_ART =
     " F     F "
 local PIRATE_PAL = {["R"] = 0xff453a, ["W"] = 0x8a1f18, ["C"] = 0xffe9a8, ["F"] = 0xff9f0a}
 
+-- The harbourmaster, 11x13, drawn big (scale 4) beside his own line of dialogue while
+-- you're tied up at a station. Every other sprite in this game is something out in the
+-- world seen at a distance; he's the only one you meet face to face, so he gets the room.
+local ALIEN_W = 11
+local ALIEN_ART =
+    "   GGGGG   " ..
+    "  GGGGGGG  " ..
+    " GGGGGGGGG " ..
+    " GGEEGGEEG " ..
+    " GEKEGEKEG " ..
+    " GGEEGGEEG " ..
+    " GGGGGGGGG " ..
+    "  GGGGGGG  " ..
+    "   GGGGG   " ..
+    "  SSSSSSS  " ..
+    " SSSDDDSSS " ..
+    " SS SSS SS " ..
+    "  S     S  "
+local ALIEN_PAL = {["G"] = 0x30d158, ["E"] = 0xf2f2f7, ["K"] = 0x101014,
+                   ["S"] = 0x5e5ce6, ["D"] = 0x3634a3}
+
 -- Stations, 11x9. Built out of steel rather than glowing blue: plate (S), shadowed plate
 -- (D) and structural dark (K), with lit windows (W) and a beacon (C) so they still read
 -- as inhabited at a distance. Three designs, picked by the sector hash, so the same
@@ -757,7 +848,7 @@ function on_tick()
     -- which is why M appeared to do nothing at all.)
     if showMap then
         drawMap()
-        for i = 2, 12 do screen.hide(i) end  -- text would float over the chart
+        for i = 2, 13 do screen.hide(i) end  -- text would float over the chart
         for _, s in ipairs(BTN_SLOT) do screen.hide(s) end
         return
     end
@@ -825,17 +916,29 @@ function on_tick()
         if nowMs - blasts[i].born > 520 then table.remove(blasts, i) end
     end
 
-    -- Shots: a bright dot flying away from you, shrinking as it goes.
+    -- Shots receding from you. A laser is drawn as a BEAM rather than a dot: a streak
+    -- trailing back toward the ship, because a bolt of light an eighth of a second long is
+    -- what a laser looks like, and a single pixel gave no sense of it travelling. The
+    -- streak shortens with distance along with everything else, so it still reads as
+    -- going away. The missile keeps its chunky head - it's a physical object, not light.
     for _, sh in ipairs(shots) do
         local rel = angleDiff(sh.ang, ship.look)
         if rel > -FOV and rel < FOV then
             local sx = CX + (rel / FOV) * CX
             local shrink = 1 - (sh.dist / 3000)
             if shrink < 0.05 then shrink = 0.05 end
-            local sz = math.floor((sh.kind == "laser" and 3 or 5) * shrink) + 1
             local sy = CY + 40 * shrink
-            canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz,
-                        sh.kind == "laser" and 0x30d158 or 0xff9f0a)
+            if sh.kind == "laser" then
+                -- Trails DOWNWARD, toward your own ship at the bottom of the screen,
+                -- which is the direction it has just come from.
+                local len = math.floor(30 * shrink) + 3
+                canvas.line(sx, sy, sx, sy + len, 0x8affc1)          -- hot core
+                canvas.line(sx - 1, sy + 1, sx - 1, sy + len, 0x30d158)
+                canvas.line(sx + 1, sy + 1, sx + 1, sy + len, 0x30d158)
+            else
+                local sz = math.floor(5 * shrink) + 1
+                canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz, 0xff9f0a)
+            end
         end
     end
 
@@ -976,6 +1079,12 @@ function on_tick()
         end
     end
 
+    -- The harbourmaster himself, on the greeting page only. Once you're at the counter the
+    -- four buttons need the whole panel, and you've already been said hello to.
+    if docked and dockedOn == "station" and dockMenu == "main" then
+        canvas.sprite(8, 50, ALIEN_W, ALIEN_ART, ALIEN_PAL, 4)
+    end
+
     -- Dock buttons, drawn from the same list the touch handler reads. A button you can't
     -- afford still shows, greyed - "REPAIR 10p" when you have 4 Parts tells you what to
     -- go and do, where hiding it would just look like the station was broken.
@@ -1037,11 +1146,23 @@ function on_tick()
         screen.hide(12)
     end
 
+    -- The docked indicator moved UP to the top bar, between the coordinates and the
+    -- compass. It used to sit at y 152, which is now the middle of the shop; and the shop
+    -- needs a "you are docked" signal on BOTH pages, not just the one where the
+    -- harbourmaster is on screen saying hello. Top centre is empty on every screen.
     if docked then
         local cap = dockedOn == "wreck" and "DERELICT" or "DOCKED"
-        screen.label(9, math.floor((W - #cap * 7) / 2), 152, cap, 0x30d158)
+        screen.label(9, math.floor((W - #cap * 7) / 2), 22, cap, 0x30d158)
     else
         screen.hide(9)
+    end
+
+    -- His line of dialogue, beside his head, on the greeting page only: at the counter the
+    -- four buttons need that space, and you've already been greeted.
+    if docked and dockedOn == "station" and dockMenu == "main" then
+        screen.label(13, 58, 68, "ARRG! What can I do for you?", 0x9ad0ff)
+    else
+        screen.hide(13)
     end
 
     -- Button captions ride on top of the boxes drawn on the canvas, and every reserved
@@ -1051,7 +1172,10 @@ function on_tick()
     for i, slot in ipairs(BTN_SLOT) do
         local b = btns[i]
         if b then
-            screen.label(slot, b.x + math.floor((b.w - #b.text * 7) / 2), b.y + 7, b.text,
+            -- Centred vertically from the button's own height, since the exchange page
+            -- uses shorter rows than the greeting does.
+            screen.label(slot, b.x + math.floor((b.w - #b.text * 7) / 2),
+                         b.y + math.floor((b.h - 12) / 2), b.text,
                          b.on and 0xffffff or 0x6a6a72)
         else
             screen.hide(slot)
