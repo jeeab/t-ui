@@ -142,8 +142,8 @@ inside your own app's folder). Max **4 KB** per file. Always handle `nil` from `
 the first time your app ever runs, nothing is saved yet.
 
 ### Hard limits (respect these)
-- The whole `main.lua` file must be **under 48 KB** of text. (Aim smaller — most apps are 2-4 KB;
-  Pinball is about 12 KB, and Deep Space, a full game, is about 18 KB.)
+- The whole `main.lua` file must be **under 96 KB** of text. (Aim smaller — most apps are 2-4 KB;
+  Pinball is about 12 KB, and Deep Space, a full game with maps and an economy, is about 46 KB.)
 - Max 64 on-screen elements.
 - Max 4 KB per saved file.
 - If your script hits a Lua error, the system catches it (the device won't crash) but your app
@@ -210,7 +210,7 @@ apps get a default icon.)
 > Using the attached T-Deck Lua app specification, write a complete `main.lua` for a game called
 > **[NAME]**. It should **[describe gameplay]**. Controls: **[tap / drag]**. Follow every limit in
 > the spec (320×240 screen, 0xRRGGBB colors, only `screen.*`/`device.*`/`store.*`, the `on_open/
-> on_tick/on_touch/on_drag` callbacks, ≤64 elements, ≤48 KB, touchscreen only). Save the high
+> on_tick/on_touch/on_drag` callbacks, ≤64 elements, ≤96 KB, touchscreen only). Save the high
 > score with `store.write`/`store.read`. Give me only the contents of `main.lua`, ready to drop
 > on the SD card.
 

@@ -5,6 +5,15 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Bigger apps, and installs that don't fail
+
+**2026.07.19.15** · 2026-07-19
+
+- Installing an app from Get Apps no longer fails on larger apps. It used to load the whole file into memory in one piece before saving it, and once an app got past about 46 KB there often wasn't a single free block that big - so the download just said it failed. It now writes straight to the SD card as it arrives.
+- Apps can be up to 96 KB, doubled from 48 KB.
+- The map credit line at the bottom of the Maps screen is now white instead of grey, so it's readable over any map.
+
+
 ## The screen stays on while you play
 
 **2026.07.19.14** · 2026-07-19

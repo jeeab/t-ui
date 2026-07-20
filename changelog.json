@@ -2,6 +2,16 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.19.15",
+      "date": "2026-07-19",
+      "title": "Bigger apps, and installs that don't fail",
+      "changes": [
+        "Installing an app from Get Apps no longer fails on larger apps. It used to load the whole file into memory in one piece before saving it, and once an app got past about 46 KB there often wasn't a single free block that big - so the download just said it failed. It now writes straight to the SD card as it arrives.",
+        "Apps can be up to 96 KB, doubled from 48 KB.",
+        "The map credit line at the bottom of the Maps screen is now white instead of grey, so it's readable over any map."
+      ]
+    },
+    {
       "version": "2026.07.19.14",
       "date": "2026-07-19",
       "title": "The screen stays on while you play",

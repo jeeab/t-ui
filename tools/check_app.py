@@ -29,7 +29,7 @@ CATALOG = APPS / "catalog.json"
 # The device is a 320x240 ESP32 with a modest amount of memory. The published spec says
 # "keep it under ~6 KB"; the real ceiling is generous enough for a full game (Deep Space
 # is ~18 KB) but not for something that would crowd the SD card or the Lua heap.
-MAX_BYTES = 49152
+MAX_BYTES = 98304
 
 # The tile label on the launcher grid is narrow, and the id doubles as the folder name
 # on the SD card (FAT: keep it short, lowercase, no spaces or punctuation).
