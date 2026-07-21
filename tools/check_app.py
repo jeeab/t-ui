@@ -26,10 +26,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 APPS = ROOT / "apps"
 CATALOG = APPS / "catalog.json"
 
-# The device is a 320x240 ESP32 with a modest amount of memory. The published spec says
-# "keep it under ~6 KB"; the real ceiling is generous enough for a full game (Deep Space
-# is ~18 KB) but not for something that would crowd the SD card or the Lua heap.
-MAX_BYTES = 98304
+# The device is a 320x240 ESP32 with 8 MB of PSRAM. The real ceiling is generous enough for
+# a big game (Deep Space is ~82 KB) with plenty of room to grow, but not so big it would
+# crowd the SD card or the Lua heap. Must match kScriptCap in the firmware's LuaApp.cpp so a
+# submission that passes here can actually launch on the device.
+MAX_BYTES = 196608
 
 # The tile label on the launcher grid is narrow, and the id doubles as the folder name
 # on the SD card (FAT: keep it short, lowercase, no spaces or punctuation).

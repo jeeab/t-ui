@@ -5,6 +5,22 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Apps reopen reliably, and a lock on/off switch
+
+**2026.07.20.1** · 2026-07-20
+
+- Fixes apps that wouldn't reopen until you rebooted. After playing a big app like Deep Space for a while, closing it, and tapping its icon again, nothing would happen until a restart. Every app used to ask for one 96 KB run of memory in a single piece each time it opened; once memory got broken up into scattered gaps there was no run that big, so the app quietly failed with nothing on screen (a reboot cleared the gaps, which is why a restart fixed it). Apps now claim their memory once and keep it, and only ask for exactly the size they need - so reopening works every time.
+- New setting: you can turn the lock screen off completely. Go to Settings and scroll to 'Lock screen'. With it off, the device boots straight to Home and never asks for a PIN. The screen still dims on its own to save battery - only the PIN pad goes away. It's on by default, so nothing changes unless you switch it off.
+- If an app ever fails to open, it now says why in the device log instead of showing a blank screen.
+- App tiles can show a proper title. Deep Space's tile said 'Stars' because that's its folder name on the card; installing or updating an app from Get Apps now saves its real name for the tile.
+- Apps can now be up to 192 KB, doubled from 96 KB - so bigger games like Deep Space have room to keep growing. Now that an app only reserves the memory it actually uses, raising the ceiling is free until something really is that big.
+- Deep Space: the station menus are solid now instead of see-through, so the choices are easier to read.
+- Deep Space v16: text no longer runs off the edge of the screen. The game was measuring every letter as the same width when the screen's font is actually proportional - a capital W is nearly three times the width of an i - so nine of the twelve things the station keepers say ran off the right-hand side mid-sentence, and the buying menus sat too far right and crowded their own buttons. Everything is measured properly now, and the keeper's greeting wraps onto two lines.
+- Deep Space v16: red space is genuinely dangerous. Lawless sectors were allowed several pirates but only rolled for a new one every eight seconds or so, which meant a rough neighbourhood took the best part of a minute to fill up - and you had usually flown out the other side by then. Sectors now fill up in a few seconds, so a red patch on the map is busy the moment you arrive.
+- Deep Space v16: cruising speed halved. Flat out used to cross a whole sector in under two seconds, which is why space felt empty - the galaxy went past faster than anything could happen in it. The map is effectively twice the size now, and the stars still streak past at the old rate so it doesn't feel sluggish.
+- Deep Space v16: money comes from fighting now, not from salvage. Stripping a derelict paid better than killing anything, which made the safest job in the galaxy also the best paid - it was possible to get rich without ever being in danger. Wrecks now pay in Parts for repairing your hull, bounties pay real money, and a marauder is worth serious credits. Upgrade prices have gone up to match, so the best guns are a long haul rather than an afternoon.
+
+
 ## Bigger apps, and installs that don't fail
 
 **2026.07.19.15** · 2026-07-19
