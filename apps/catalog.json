@@ -3,6 +3,15 @@
   "base": "https://jeeab.github.io/t-ui/",
   "apps": [
     {
+      "id": "stars",
+      "name": "Deep Space",
+      "kind": "game",
+      "desc": "Explore a galaxy: hunt pirates for bounty, salvage wrecks, upgrade at steel stations.",
+      "ver": "19",
+      "bytes": 92045,
+      "url": "apps/stars/main.lua"
+    },
+    {
       "id": "pinball",
       "name": "Pinball",
       "kind": "game",
@@ -73,15 +82,6 @@
       "ver": "1",
       "bytes": 3318,
       "url": "apps/breathe/main.lua"
-    },
-    {
-      "id": "stars",
-      "name": "Deep Space",
-      "kind": "game",
-      "desc": "Explore a galaxy: hunt pirates for bounty, salvage wrecks, upgrade at steel stations.",
-      "ver": "18",
-      "bytes": 84087,
-      "url": "apps/stars/main.lua"
     }
   ]
 }

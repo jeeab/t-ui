@@ -165,7 +165,11 @@ end
 -- exactly the signal that you're in range, and the two can never drift apart.
 local DOCK_RANGE = 260
 local WRECK_RANGE = 240
-local REPAIR_COST = 10           -- Parts for a full hull repair
+local REPAIR_COST = 20           -- Parts for a full hull repair - four derelicts' worth
+local EARTH_REPAIR = 5           -- Parts to repair at HOME. Cheap on purpose: limping back
+                                 -- to the origin should always be a real option.
+-- Earth's standing message. There is no keeper sprite here to say it, so it scrolls.
+local EARTH_MSG = "hunt down pirates - greater challenge and greater reward the further from home"
 local SALVAGE_PARTS = 5          -- Parts per derelict
 local MISSILE_COST = 100         -- credits per missile - a real cost now guns run to thousands
 -- Bounties now live per enemy type in PIRATE_KINDS: a marauder is worth four raiders,
@@ -191,6 +195,7 @@ local lastRegen = 0
 local stars = {}
 local ok = false
 local hint = 0
+local earthScroll = 0            -- x position of Earth's scrolling message, reset on arrival
 
 -- Combat. Pirates are spawned live around the ship rather than stored: their DENSITY
 -- comes from the sector's danger rating, so some regions are genuinely lawless and you
@@ -436,21 +441,24 @@ end
 -- is, and a marauder is worth roughly what a whole wreck used to be.
 -- How far off your aim an enemy can be and still be LOCKED when you fire: point within
 -- this arc of a target and the shot flies to it and the beam is drawn going to it, so a
--- hit that registers also looks like one. ~30 degrees either side of where you point.
-local LOCK_ARC = 0.52
+-- hit that registers also looks like one. ~18 degrees either side of where you point:
+-- 30 was generous enough that there was no reason to keep aiming once you were roughly on.
+local LOCK_ARC = 0.32
 local PIRATE_KINDS = {
+    -- bcore/bglow are the colours of the bolts this ship FIRES, so incoming fire tells you
+    -- what is shooting at you before you have even picked it out against the stars.
     {name = "raider",      hpMul = 1,  bounty = 25, dmg = 6,  speed = 3.0, cool = 1.0,
-     w = 9,  h = 7, near = 2200},
+     w = 9,  h = 7, near = 2200, bcore = 0xff9d95, bglow = 0xff453a},
     {name = "interceptor", hpMul = 0.5, bounty = 40, dmg = 4, speed = 4.8, cool = 0.55,
-     w = 7,  h = 5, near = 1700},
+     w = 7,  h = 5, near = 1700, bcore = 0xfff3a8, bglow = 0xffd60a},
     {name = "marauder",    hpMul = 3,  bounty = 120, dmg = 11, speed = 2.2, cool = 1.4,
-     w = 11, h = 9, near = 2800},
+     w = 11, h = 9, near = 2800, bcore = 0xe0a8ff, bglow = 0xbf5af2},
 }
 
 -- The home sectors are a genuine safe zone: nothing spawns within this many sectors of the
 -- start (depth 0). Big swarms are the reward for flying OUT, not something waiting next to
--- home. depthOf is the straight-line sector distance from the origin.
-local SAFE_DEPTH = 4
+-- home. Pulled in from 4 to 3 - at 4 you could fly a long way and never meet anybody.
+local SAFE_DEPTH = 3
 local function maxPiratesHere()
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     local depth = depthOf(csx, csy)
@@ -459,7 +467,11 @@ local function maxPiratesHere()
     if depth < SAFE_DEPTH then return 0 end
     local d = dangerAt(csx, csy)
     local n = 0
-    if d >= 62 then n = 3 + math.floor((d - 62) / 13) end
+    -- Lawless space fields a real pack. ORDINARY space now fields the odd loner instead of
+    -- nobody at all: with only the top third of sectors carrying anyone, most of the galaxy
+    -- outside the safe zone was simply empty and you had to go hunting for a fight.
+    if d >= 62 then n = 3 + math.floor((d - 62) / 13)
+    elseif d >= 32 then n = 1 end
     -- Beyond the safe zone, depth adds raiders on top of the danger roll, and adds them to
     -- QUIET sectors too - a long way out there is no such thing as empty space. Measured
     -- from the safe edge so pressure builds from zero as you leave, rather than jumping.
@@ -711,6 +723,13 @@ local function stepDocking()
         end
     end
 
+    -- Home. Checked before the generated stations so Earth always wins if one ever lands
+    -- near the origin, and so that coming home is never ambiguous.
+    if math.sqrt(ship.x * ship.x + ship.y * ship.y) <= DOCK_RANGE then
+        docked, dockedOn = true, "earth"
+        return
+    end
+
     -- Otherwise a station. This was once much wider, to forgive the half-a-point of aim
     -- error that 22.5 degree steering allows. Tightened back down because docking from
     -- far enough away that the station is still a speck doesn't read as docking at all -
@@ -722,10 +741,18 @@ end
 
 -- Repairing the hull is the one thing Parts are for, and it's instant rather than the
 -- old slow drip - you came all this way, you shouldn't then sit and wait.
+-- What a repair costs where you're standing. Earth patches you up cheap - that's the whole
+-- point of home, and it's what makes limping back to the origin a real choice rather than
+-- just a long flight to the same prices.
+local function repairCost()
+    return (docked and dockedOn == "earth") and EARTH_REPAIR or REPAIR_COST
+end
+
 local function repairHull()
-    if not docked or dockedOn ~= "station" then return false end
-    if ship.hp >= ship.maxhp or parts < REPAIR_COST then return false end
-    parts = parts - REPAIR_COST
+    if not docked or (dockedOn ~= "station" and dockedOn ~= "earth") then return false end
+    local cost = repairCost()
+    if ship.hp >= ship.maxhp or parts < cost then return false end
+    parts = parts - cost
     ship.hp = ship.maxhp
     device.beep(true)
     return true
@@ -894,6 +921,13 @@ local function dockButtons()
             b[#b + 1] = {text = "REPAIR " .. REPAIR_COST .. "p", act = repairHull,
                          on = parts >= REPAIR_COST and ship.hp < ship.maxhp}
         end
+    elseif dockedOn == "earth" then
+        -- Home: cheap repairs and nothing else. Earth is a haven, not a shop - the trading
+        -- and the good guns stay out there in the dark where the risk is. Sits low so the
+        -- scrolling message above it never has to share a line with a button.
+        top, h = 150, 26
+        b[#b + 1] = {text = "REPAIR " .. EARTH_REPAIR .. "p", act = repairHull,
+                     on = parts >= EARTH_REPAIR and ship.hp < ship.maxhp}
     elseif dockedOn == "wreck" and dockedWreck and not isSalvaged(dockedWreck.sx, dockedWreck.sy) then
         b[#b + 1] = {text = "SALVAGE +" .. SALVAGE_PARTS .. "p", act = salvageWreck, on = true}
     end
@@ -992,12 +1026,20 @@ end
 
 function on_touch(x, y)
     if not ok then return end
-    if ship.hp <= 0 then                      -- respawn: keep credits, lose the run
+    if ship.hp <= 0 then                      -- respawn: towed home, and it costs you
+        -- Losing your GEAR would be harsh enough to put the game down for good; losing your
+        -- money, your Parts and all the distance you'd earned stings properly without
+        -- erasing the run. You wake up at Earth, patched up and poorer.
+        credits = math.floor(credits / 2)
+        parts = 0
+        ship.x, ship.y = 0, 0
         ship.hp = ship.maxhp
         ship.sh = ship.maxsh
         ship.warp = 1
         pirates = {}
         shots = {}
+        incoming = {}
+        popup("TOWED HOME - HALF YOUR CREDITS GONE", 3200)
         save()
         return
     end
@@ -1239,6 +1281,15 @@ local ALIEN_SAY = {
 -- (D) and structural dark (K), with lit windows (W) and a beacon (C) so they still read
 -- as inhabited at a distance. Three designs, picked by the sector hash, so the same
 -- station always looks the same but the galaxy isn't full of identical rings.
+-- Earth, at the origin. The one object in the galaxy that isn't generated: it is always in
+-- exactly the same place, which is what makes 0,0 a landmark you can steer home to rather
+-- than just a pair of numbers. Ice caps top and bottom so it reads as a planet at a glance.
+local EARTH_W = 11
+local EARTH_ART =
+    "   WWWWW   " .. " BBBBBBBBB " .. "BBBBGGBBBBB" .. "BBBGGGGBBBB" ..
+    "BBBBGGGBBBB" .. "BBBBBBBBBBB" .. "BBBGGBBGGBB" .. "BBBGGGBBBBB" ..
+    "BBBBBBBBBBB" .. " BBBBBBBBB " .. "   WWWWW   "
+local EARTH_PAL = {["B"] = 0x2a6fd6, ["G"] = 0x30d158, ["W"] = 0xffffff}
 local STATION_W = 11
 local STATION_ART = {
     -- ring station: a wheel with a lit hub
@@ -1312,11 +1363,13 @@ function on_open()
     -- Intro card: the controls, front and centre, fading on their own after a few seconds.
     -- Two lines so every key gets named (the old one-liner sat along the bottom edge and
     -- never mentioned the map). Both lines are hidden together when the timer runs out.
-    hint = device.time() + 7000
-    local l1 = "WASD  steer & throttle"
-    local l2 = "L laser   P missile   M map"
-    screen.label(2, centreX(l1, 0, W), 150, l1, 0xffffff)
-    screen.label(15, centreX(l2, 0, W), 172, l2, 0x9ad0ff)
+    hint = device.time() + 8000
+    local l1 = "Explore. The further out, the deadlier."
+    local l2 = "WASD  steer & throttle"
+    local l3 = "L laser   P missile   M map"
+    screen.label(2, centreX(l1, 0, W), 132, l1, 0xffd60a)
+    screen.label(15, centreX(l2, 0, W), 156, l2, 0xffffff)
+    screen.label(17, centreX(l3, 0, W), 178, l3, 0x9ad0ff)
 end
 
 function on_tick()
@@ -1426,9 +1479,26 @@ function on_tick()
                 if f > 1 then f = 1 end
                 local nx, ny = CX, 168
                 local hx, hy = nx + (tpx - nx) * f, ny + (CY - ny) * f
-                canvas.line(nx - 1, ny, hx - 1, hy, t.glow)
-                canvas.line(nx + 1, ny, hx + 1, hy, t.glow)
-                canvas.line(nx, ny, hx, hy, t.core)
+                -- SEGMENTED rather than one solid bar: short dashes along the path, so it
+                -- reads as a stream of bolts flying at the target the way the straight
+                -- shots do, instead of a static beam pinned between two points.
+                local dx, dy = hx - nx, hy - ny
+                local len = math.sqrt(dx * dx + dy * dy)
+                if len > 1 then
+                    local step, dash = 15, 8    -- pixels per bolt, and how much of it draws
+                    for s = 0, math.floor(len / step) do
+                        local a = (s * step) / len
+                        if a < 1 then
+                            local bb = (s * step + dash) / len
+                            if bb > 1 then bb = 1 end
+                            local x1, y1 = nx + dx * a, ny + dy * a
+                            local x2, y2 = nx + dx * bb, ny + dy * bb
+                            canvas.line(x1 - 1, y1, x2 - 1, y2, t.glow)
+                            canvas.line(x1 + 1, y1, x2 + 1, y2, t.glow)
+                            canvas.line(x1, y1, x2, y2, t.core)
+                        end
+                    end
+                end
                 local hs = (sh.tier or 1) >= 8 and 4 or 2   -- fatter head for the shock gun
                 canvas.rect(hx - hs, hy - hs, hs * 2, hs * 2, t.core)
             end
@@ -1473,16 +1543,19 @@ function on_tick()
     for _, b in ipairs(incoming) do
         local px, dist = project(b.x, b.y)
         if px then
+            local k = PIRATE_KINDS[b.kind or 1]
             local sz = math.floor(600 / math.max(dist, 60) * 5)
             if sz < 3 then sz = 3 end
             if sz > 26 then sz = 26 end
-            -- A marauder's bolt comes in purple. That's not decoration: it hits for nearly
-            -- twice what a raider's does, and the colour is the only warning you get in
-            -- time to decide whether to take it on the shields or get out of the way.
-            local heavy = (b.kind or 1) == 3
-            canvas.rect(px - sz / 2, CY - sz / 2, sz, sz, heavy and 0xbf5af2 or 0xff9f0a)
-            canvas.rect(px - sz / 4, CY - sz / 4, sz / 2, sz / 2,
-                        heavy and 0xe0a8ff or 0xffe9a8)
+            -- A BOLT, not a block: a bright core inside a glow, drawn long-ways so it reads
+            -- as a laser coming at you, and in the firing ship's OWN colour - red raider,
+            -- yellow interceptor, purple marauder. The colour is the warning, not decoration:
+            -- a marauder's shot hits for nearly twice what a raider's does, and that's the
+            -- only notice you get in time to take it on the shields or get out of the way.
+            local hh = math.max(3, math.floor(sz * 0.9))   -- half-length, grows as it closes
+            local hw = math.max(1, math.floor(sz / 5))     -- half-width, stays slim
+            canvas.rect(px - hw - 1, CY - hh, (hw + 1) * 2, hh * 2, k.bglow)
+            canvas.rect(px - hw, CY - hh + 2, hw * 2, hh * 2 - 4, k.bcore)
         end
     end
 
@@ -1498,6 +1571,39 @@ function on_tick()
             if sc > 7 then sc = 7 end
             canvas.sprite(px - (k.w * sc) / 2, CY - (k.h * sc) / 2,
                           k.w, PIRATE_ART[pr.kind or 1], PIRATE_PAL[pr.kind or 1], sc)
+        end
+    end
+
+    -- LOCK indicator: corner brackets round the enemy your next shot will take. Runs the
+    -- same scan fire() does, so what you see bracketed is exactly what the trigger will
+    -- hit. With the aim arc tightened this is what keeps aiming precise instead of guessy -
+    -- you watch the lock take, then fire. Drawn after the sprites so it sits on top.
+    do
+        local lockT, lb = nil, LOCK_ARC
+        for _, p in ipairs(pirates) do
+            local rel = math.abs(angleDiff(math.atan(p.x - ship.x, p.y - ship.y), ship.look))
+            if rel < lb then lb = rel; lockT = p end
+        end
+        if lockT then
+            local px, dist = project(lockT.x, lockT.y)
+            if px and dist < 3000 then
+                local k = PIRATE_KINDS[lockT.kind or 1]
+                local sc = math.floor(k.near / dist)
+                if sc < 1 then sc = 1 end
+                if sc > 7 then sc = 7 end
+                local hw = math.max(7, math.floor(k.w * sc / 2) + 3)
+                local hh = math.max(7, math.floor(k.h * sc / 2) + 3)
+                local ln = math.max(3, math.floor(hw / 2))
+                local c = 0x30d158
+                canvas.line(px - hw, CY - hh, px - hw + ln, CY - hh, c)
+                canvas.line(px - hw, CY - hh, px - hw, CY - hh + ln, c)
+                canvas.line(px + hw, CY - hh, px + hw - ln, CY - hh, c)
+                canvas.line(px + hw, CY - hh, px + hw, CY - hh + ln, c)
+                canvas.line(px - hw, CY + hh, px - hw + ln, CY + hh, c)
+                canvas.line(px - hw, CY + hh, px - hw, CY + hh - ln, c)
+                canvas.line(px + hw, CY + hh, px + hw - ln, CY + hh, c)
+                canvas.line(px + hw, CY + hh, px + hw, CY + hh - ln, c)
+            end
         end
     end
 
@@ -1543,6 +1649,20 @@ function on_tick()
         end
     end
 
+    -- Earth, at the origin. Drawn like a station, but it's a fixed landmark rather than
+    -- something the generator produced - the one thing that is in the same place always,
+    -- on every device. Seeing it on the horizon IS the "you're nearly home" signal.
+    do
+        local px, dist = project(0, 0)
+        if px and dist < 4000 then
+            local sc = math.floor(2600 / dist)
+            if sc < 1 then sc = 1 end
+            if sc > 7 then sc = 7 end
+            canvas.sprite(px - (EARTH_W * sc) / 2, CY - (EARTH_W * sc) / 2,
+                          EARTH_W, EARTH_ART, EARTH_PAL, sc)
+        end
+    end
+
     -- Stations, drawn where they actually are relative to where we're looking.
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
     for sx = csx - 2, csx + 2 do
@@ -1581,7 +1701,7 @@ function on_tick()
     -- drawn straight across your own hull. It reads as being moored below the window.
     local frame = 2
     if ship.turn < -0.012 then frame = 1 elseif ship.turn > 0.012 then frame = 3 end
-    local shipY = (docked and dockedOn == "station") and 186 or 170
+    local shipY = (docked and (dockedOn == "station" or dockedOn == "earth")) and 186 or 170
     canvas.sprite(CX - (SHIP_W * SHIP_SCALE) / 2, shipY, SHIP_W, SHIP[frame], PALETTE, SHIP_SCALE)
 
     -- Readouts: where we are, and where the nearest station is. Without this a compass
@@ -1687,8 +1807,11 @@ function on_tick()
     -- IS the "you can dock here" indicator rather than a separate thing to learn.
     local nowT = device.time()
     local line = nil
+    local homeDist = math.sqrt(ship.x * ship.x + ship.y * ship.y)
     if popText and nowT < popUntil then
         line = popText
+    elseif homeDist <= DOCK_RANGE then
+        line = "Home"
     elseif nearest and nearestDist <= DOCK_RANGE then
         line = nearest.name
     end
@@ -1696,6 +1819,19 @@ function on_tick()
         screen.label(12, centreX(line, 0, W), 44, line, 0x9ad0ff)
     else
         screen.hide(12)
+    end
+
+    -- Earth's standing message, scrolled right-to-left on repeat. There's no keeper sprite
+    -- here to say it and it's far too long for 320 pixels. It rides at y=96 - clear of the
+    -- "Home" line above (44) and the REPAIR button below (150) - so it can never overlap
+    -- either, and it restarts off the right edge every time you arrive.
+    if docked and dockedOn == "earth" then
+        earthScroll = earthScroll - 2
+        if earthScroll < -textW(EARTH_MSG) then earthScroll = W end
+        screen.label(16, math.floor(earthScroll), 96, EARTH_MSG, 0x9ad0ff)
+    else
+        earthScroll = W
+        screen.hide(16)
     end
 
     -- The docked indicator moved UP to the top bar, between the coordinates and the
@@ -1758,7 +1894,9 @@ function on_tick()
         screen.hide(8)
     end
 
-    if hint > 0 and device.time() > hint then hint = 0; screen.hide(2); screen.hide(15) end
+    if hint > 0 and device.time() > hint then
+        hint = 0; screen.hide(2); screen.hide(15); screen.hide(17)
+    end
 
     -- Autosave now and then; a save is a couple of hundred bytes.
     if device.time() % 5000 < 34 then save() end
