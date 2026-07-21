@@ -167,7 +167,7 @@ local DOCK_RANGE = 260
 local WRECK_RANGE = 240
 local REPAIR_COST = 10           -- Parts for a full hull repair
 local SALVAGE_PARTS = 5          -- Parts per derelict
-local MISSILE_COST = 25          -- credits per missile - exactly one raider's bounty
+local MISSILE_COST = 100         -- credits per missile - a real cost now guns run to thousands
 -- Bounties now live per enemy type in PIRATE_KINDS: a marauder is worth four raiders,
 -- which is what stops the tough ones from being purely a tax on flying outward.
 local PARTS_PACK = 5             -- Parts you get for buying a pack at a station
@@ -261,11 +261,12 @@ local function stationName(sx, sy)
            .. " " .. NAME_C[((h >> 9) % 8) + 1]
 end
 
--- What's in a sector? Stations are deliberately uncommon - about one sector in twelve.
--- They were one in six and that made them ordinary; you want to be pleased to find one.
+-- What's in a sector? Stations are deliberately uncommon - about one sector in twenty.
+-- They were one in six (ordinary), then one in twelve (still crowded); at one in twenty
+-- you're pleased to find one and there's real open space to cross between them.
 local function stationIn(sx, sy)
     local h = hash(sx, sy, 1)
-    if h % 12 ~= 0 then return nil end
+    if h % 20 ~= 0 then return nil end
     return {
         x = sx * SECTOR + (h >> 4) % SECTOR,
         y = sy * SECTOR + (h >> 14) % SECTOR,
@@ -433,26 +434,36 @@ end
 -- the most profitable thing in the game was also the least dangerous one - the reason it
 -- was possible to get rich and bored at the same time. Fighting is now where the money
 -- is, and a marauder is worth roughly what a whole wreck used to be.
+-- How far off your aim an enemy can be and still be LOCKED when you fire: point within
+-- this arc of a target and the shot flies to it and the beam is drawn going to it, so a
+-- hit that registers also looks like one. ~30 degrees either side of where you point.
+local LOCK_ARC = 0.52
 local PIRATE_KINDS = {
     {name = "raider",      hpMul = 1,  bounty = 25, dmg = 6,  speed = 3.0, cool = 1.0,
      w = 9,  h = 7, near = 2200},
-    {name = "interceptor", hpMul = 0.5, bounty = 40, dmg = 4, speed = 5.5, cool = 0.55,
+    {name = "interceptor", hpMul = 0.5, bounty = 40, dmg = 4, speed = 4.8, cool = 0.55,
      w = 7,  h = 5, near = 1700},
     {name = "marauder",    hpMul = 3,  bounty = 120, dmg = 11, speed = 2.2, cool = 1.4,
      w = 11, h = 9, near = 2800},
 }
 
+-- The home sectors are a genuine safe zone: nothing spawns within this many sectors of the
+-- start (depth 0). Big swarms are the reward for flying OUT, not something waiting next to
+-- home. depthOf is the straight-line sector distance from the origin.
+local SAFE_DEPTH = 4
 local function maxPiratesHere()
     local csx, csy = math.floor(ship.x / SECTOR), math.floor(ship.y / SECTOR)
-    local d = dangerAt(csx, csy)
     local depth = depthOf(csx, csy)
+    -- Inside the safe zone, nothing spawns at all - the swarms right next to home were
+    -- ordinary danger-rolls that took no account of how close to the start you were.
+    if depth < SAFE_DEPTH then return 0 end
+    local d = dangerAt(csx, csy)
     local n = 0
     if d >= 62 then n = 3 + math.floor((d - 62) / 13) end
-    -- Depth adds raiders on top of whatever the sector was already going to field, and it
-    -- adds them to QUIET sectors too. That's the point: near home a peaceful sector is
-    -- genuinely empty, but a long way out there is no such thing as empty space, so
-    -- distance is felt as pressure rather than just as a bigger number on the position.
-    n = n + math.floor(depth / 4)
+    -- Beyond the safe zone, depth adds raiders on top of the danger roll, and adds them to
+    -- QUIET sectors too - a long way out there is no such thing as empty space. Measured
+    -- from the safe edge so pressure builds from zero as you leave, rather than jumping.
+    n = n + math.floor((depth - SAFE_DEPTH) / 4)
     if n > 8 then n = 8 end
     return n
 end
@@ -519,55 +530,74 @@ local function fire(kind)
         missiles = missiles - 1
     end
     lastFire = now
-    -- The shot carries the gun's tier with it, so what's already in flight keeps the
-    -- colour it was fired with even if you dock and buy a better one a second later.
-    shots[#shots + 1] = {kind = kind, dist = 0, ang = ship.look, born = now,
-                         tier = ship.laser}
+    -- Lock onto the enemy you're most pointing at, within LOCK_ARC. The shot is then aimed
+    -- straight at it (and drawn going to it), so what hits is what you see. Nothing in the
+    -- arc means a clean shot out into empty space.
+    local target, best = nil, LOCK_ARC
+    for _, p in ipairs(pirates) do
+        local rel = math.abs(angleDiff(math.atan(p.x - ship.x, p.y - ship.y), ship.look))
+        if rel < best then best = rel; target = p end
+    end
+    local ang = target and math.atan(target.x - ship.x, target.y - ship.y) or ship.look
+    -- The shot carries the gun's tier with it, so what's already in flight keeps the colour
+    -- it was fired with even if you dock and buy a better one a second later.
+    shots[#shots + 1] = {kind = kind, dist = 0, ang = ang, born = now,
+                         tier = ship.laser, target = target}
     device.beep(kind == "missile")
 end
 
--- A shot travels straight out along the heading it was fired on. It hits if, by the time
--- it reaches a pirate's distance, they're still close together in bearing.
+-- Apply a shot's damage to a pirate and handle the kill (blast, bounty, salvage, removal).
+local function hitPirate(p, sh)
+    -- The laser asks the gun you actually own how hard it hits; the missile is one shot, one
+    -- kill (99) so it stays a kill even against a deep marauder's 36 hull.
+    p.hp = p.hp - (sh.kind == "laser" and LASER[ship.laser].dmg or 99)
+    if p.hp <= 0 then
+        local pk = PIRATE_KINDS[p.kind or 1]
+        -- Leave a blast at the pirate's own position, so the kill happens out there in the
+        -- world and stays put as you fly past. Big things blow up bigger.
+        blasts[#blasts + 1] = {x = p.x, y = p.y, born = device.time(), big = pk.hpMul >= 3}
+        for pi = #pirates, 1, -1 do
+            if pirates[pi] == p then table.remove(pirates, pi); break end
+        end
+        credits = credits + pk.bounty
+        -- Some wrecks pay Parts. Less than a derelict, so fighting tops you up but hunting
+        -- derelicts is still how you actually fund a repair.
+        if math.random() < PIRATE_PARTS_CHANCE then
+            parts = parts + PIRATE_PARTS
+            popup("+" .. PIRATE_PARTS .. " PARTS", 1400)
+        end
+        device.beep(true)
+    end
+end
+
+-- A shot flies out along the heading it was fired on. A LOCKED shot (fired with an enemy in
+-- the arc) hits THAT enemy the instant it reaches its distance - so the beam you see going
+-- to a sprite is the one that connects, and it reaches the full distance instead of being
+-- eaten by a fat hit-box short of the target. An unlocked shot only hits something dead in
+-- its path on a tight cone; otherwise it flies on out into empty space.
 local function stepShots(dt)
     local i = 1
     while i <= #shots do
         local sh = shots[i]
         sh.dist = sh.dist + (sh.kind == "laser" and 260 or 120)
         local hit = false
-        for pi = #pirates, 1, -1 do
-            local p = pirates[pi]
-            local dx, dy = p.x - ship.x, p.y - ship.y
-            local pd = math.sqrt(dx * dx + dy * dy)
-            -- Generous on purpose. The target is a few pixels wide at range and you are
-            -- aiming with a thumb on a 320-pixel screen; a tight box just feels broken.
-            if math.abs(pd - sh.dist) < 420 then
-                local rel = angleDiff(math.atan(dx, dy), sh.ang)
-                if math.abs(rel) < 0.42 then
-                    -- The phoenix is one shot, one kill, and stays that way now a deep
-                    -- marauder can carry 36 hull. Fixed damage would have quietly demoted
-                    -- the missile to "a slightly better laser" the moment they got tougher.
-                    -- The laser now asks the gun you actually own how hard it hits.
-                    p.hp = p.hp - (sh.kind == "laser" and LASER[ship.laser].dmg or 99)
+        local tp = sh.target
+        if tp and tp.hp and tp.hp > 0 then
+            local dx, dy = tp.x - ship.x, tp.y - ship.y
+            if sh.dist >= math.sqrt(dx * dx + dy * dy) then
+                hitPirate(tp, sh)
+                hit = true
+            end
+        else
+            sh.target = nil                          -- locked enemy died or flew off: fly on
+            for pi = #pirates, 1, -1 do
+                local p = pirates[pi]
+                local dx, dy = p.x - ship.x, p.y - ship.y
+                local pd = math.sqrt(dx * dx + dy * dy)
+                if math.abs(pd - sh.dist) < 140 and
+                   math.abs(angleDiff(math.atan(dx, dy), sh.ang)) < 0.12 then
+                    hitPirate(p, sh)
                     hit = true
-                    if p.hp <= 0 then
-                        local pk = PIRATE_KINDS[p.kind or 1]
-                        -- Leave a blast behind at the pirate's own position, so the kill
-                        -- happens out there in the world and stays put as you fly past it.
-                        -- Big things blow up bigger; killing a marauder should look like
-                        -- the achievement it was.
-                        blasts[#blasts + 1] = {x = p.x, y = p.y, born = device.time(),
-                                               big = pk.hpMul >= 3}
-                        table.remove(pirates, pi)
-                        credits = credits + pk.bounty
-                        -- Some wrecks are worth stripping. Deliberately less than a
-                        -- derelict pays, so fighting tops your Parts up but hunting
-                        -- derelicts is still the way to actually fund a repair.
-                        if math.random() < PIRATE_PARTS_CHANCE then
-                            parts = parts + PIRATE_PARTS
-                            popup("+" .. PIRATE_PARTS .. " PARTS", 1400)
-                        end
-                        device.beep(true)
-                    end
                     break
                 end
             end
@@ -626,8 +656,8 @@ local function stepPirates()
         local p = pirates[pi]
         local dx, dy = p.x - ship.x, p.y - ship.y
         local d = math.sqrt(dx * dx + dy * dy)
-        if d > 5000 then
-            table.remove(pirates, pi)                    -- outrun: warping away works
+        if d > 3200 then
+            table.remove(pirates, pi)                    -- outrun: warping away works (was 5000, too far to ever shake one)
         elseif safe then
             -- Docked. They sheer away from the station's guns instead of hanging in the
             -- air politely not shooting - you can watch them give up, which tells you the
@@ -1279,13 +1309,14 @@ function on_open()
     ship.look = ship.heading
     for i = 1, STARS do stars[i] = {}; reseed(stars[i], true) end
     findNearest()
-    hint = device.time() + 6000
-    -- Centred rather than pinned at x=14, where it overran the right edge by a couple of
-    -- pixels and quietly clipped the "e" off "missile" - the very first thing the game
-    -- ever shows you. At 308 pixels this is the widest line in the app; centring it
-    -- leaves 6 clear either side and can't drift if the wording changes.
-    local hintText = "A/D turn  W/S speed  L laser  P missile"
-    screen.label(2, centreX(hintText, 0, W), 210, hintText, 0x8e8e93)
+    -- Intro card: the controls, front and centre, fading on their own after a few seconds.
+    -- Two lines so every key gets named (the old one-liner sat along the bottom edge and
+    -- never mentioned the map). Both lines are hidden together when the timer runs out.
+    hint = device.time() + 7000
+    local l1 = "WASD  steer & throttle"
+    local l2 = "L laser   P missile   M map"
+    screen.label(2, centreX(l1, 0, W), 150, l1, 0xffffff)
+    screen.label(15, centreX(l2, 0, W), 172, l2, 0x9ad0ff)
 end
 
 function on_tick()
@@ -1382,44 +1413,57 @@ function on_tick()
     -- streak shortens with distance along with everything else, so it still reads as
     -- going away. The missile keeps its chunky head - it's a physical object, not light.
     for _, sh in ipairs(shots) do
-        local rel = angleDiff(sh.ang, ship.look)
-        if rel > -FOV and rel < FOV then
-            local sx = CX + (rel / FOV) * CX
-            local shrink = 1 - (sh.dist / 3000)
-            if shrink < 0.05 then shrink = 0.05 end
-            local sy = CY + 40 * shrink
-            if sh.kind == "laser" then
-                -- The gun you're carrying decides the colour, so you can see what you're
-                -- firing without reading a number off the HUD. The shot remembers the tier
-                -- it was FIRED at rather than asking the ship now: buying a new gun while
-                -- a bolt is in flight shouldn't repaint it mid-air.
-                local t = LASER[sh.tier or 1]
-                if (sh.tier or 1) >= 8 then
-                    -- The top tier isn't a beam at all. A shock ball: a bright core inside
-                    -- a ragged halo that pulses as it travels, so the last upgrade in the
-                    -- game announces itself instead of just being a slightly better line.
-                    local r = math.floor(9 * shrink) + 2
-                    local cy = sy + r
-                    canvas.circle(sx, cy, r, t.glow, true)
-                    canvas.circle(sx, cy, math.max(1, r - 2), t.core, true)
-                    -- Arcs flicking off the sides, on every other step of its flight. The
-                    -- flicker is what makes it read as electrical rather than as a bead.
-                    if (sh.dist // 130) % 2 == 0 then
-                        canvas.rect(sx - r - 2, cy - 1, 2, 3, t.glow)
-                        canvas.rect(sx + r, cy - 1, 2, 3, t.glow)
-                        canvas.rect(sx - 1, cy - r - 2, 3, 2, t.glow)
+        local t = LASER[sh.tier or 1]
+        -- A LOCKED laser is drawn as a real beam from the ship's gun to the enemy sprite it
+        -- is going to hit - the "underside turret". It lances out toward the target as the
+        -- shot travels (f = how far along it is), so it visibly connects instead of firing
+        -- straight past, and reaches the full distance instead of fading out short. The
+        -- enemy sits on the centre line (CY); the gun is the ship's nose near the bottom.
+        if sh.kind == "laser" and sh.target and sh.target.hp and sh.target.hp > 0 then
+            local tpx, tdist = project(sh.target.x, sh.target.y)
+            if tpx then
+                local f = sh.dist / (tdist > 1 and tdist or 1)
+                if f > 1 then f = 1 end
+                local nx, ny = CX, 168
+                local hx, hy = nx + (tpx - nx) * f, ny + (CY - ny) * f
+                canvas.line(nx - 1, ny, hx - 1, hy, t.glow)
+                canvas.line(nx + 1, ny, hx + 1, hy, t.glow)
+                canvas.line(nx, ny, hx, hy, t.core)
+                local hs = (sh.tier or 1) >= 8 and 4 or 2   -- fatter head for the shock gun
+                canvas.rect(hx - hs, hy - hs, hs * 2, hs * 2, t.core)
+            end
+        else
+            -- Unlocked laser (fired into empty space) or a missile: the old receding bolt,
+            -- drawn along the heading it was fired on. The shot remembers the tier it was
+            -- FIRED at, so buying a new gun mid-flight never repaints a bolt already gone.
+            local rel = angleDiff(sh.ang, ship.look)
+            if rel > -FOV and rel < FOV then
+                local sx = CX + (rel / FOV) * CX
+                local shrink = 1 - (sh.dist / 3000)
+                if shrink < 0.05 then shrink = 0.05 end
+                local sy = CY + 40 * shrink
+                if sh.kind == "laser" then
+                    if (sh.tier or 1) >= 8 then
+                        -- Shock ball: a bright core in a ragged pulsing halo.
+                        local r = math.floor(9 * shrink) + 2
+                        local cy = sy + r
+                        canvas.circle(sx, cy, r, t.glow, true)
+                        canvas.circle(sx, cy, math.max(1, r - 2), t.core, true)
+                        if (sh.dist // 130) % 2 == 0 then
+                            canvas.rect(sx - r - 2, cy - 1, 2, 3, t.glow)
+                            canvas.rect(sx + r, cy - 1, 2, 3, t.glow)
+                            canvas.rect(sx - 1, cy - r - 2, 3, 2, t.glow)
+                        end
+                    else
+                        local len = math.floor(30 * shrink) + 3
+                        canvas.line(sx, sy, sx, sy + len, t.core)
+                        canvas.line(sx - 1, sy + 1, sx - 1, sy + len, t.glow)
+                        canvas.line(sx + 1, sy + 1, sx + 1, sy + len, t.glow)
                     end
                 else
-                    -- Trails DOWNWARD, toward your own ship at the bottom of the screen,
-                    -- which is the direction it has just come from.
-                    local len = math.floor(30 * shrink) + 3
-                    canvas.line(sx, sy, sx, sy + len, t.core)        -- hot core
-                    canvas.line(sx - 1, sy + 1, sx - 1, sy + len, t.glow)
-                    canvas.line(sx + 1, sy + 1, sx + 1, sy + len, t.glow)
+                    local sz = math.floor(5 * shrink) + 1
+                    canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz, 0xff9f0a)
                 end
-            else
-                local sz = math.floor(5 * shrink) + 1
-                canvas.rect(sx - sz / 2, sy - sz / 2, sz, sz, 0xff9f0a)
             end
         end
     end
@@ -1714,7 +1758,7 @@ function on_tick()
         screen.hide(8)
     end
 
-    if hint > 0 and device.time() > hint then hint = 0; screen.hide(2) end
+    if hint > 0 and device.time() > hint then hint = 0; screen.hide(2); screen.hide(15) end
 
     -- Autosave now and then; a save is a couple of hundred bytes.
     if device.time() % 5000 < 34 then save() end
