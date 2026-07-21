@@ -4,10 +4,10 @@
   "apps": [
     {
       "id": "stars",
-      "name": "Deep Space",
+      "name": "Stars",
       "kind": "game",
       "desc": "Explore a galaxy: hunt pirates for bounty, salvage wrecks, upgrade at steel stations.",
-      "ver": "19",
+      "ver": "20",
       "bytes": 92045,
       "url": "apps/stars/main.lua"
     },
