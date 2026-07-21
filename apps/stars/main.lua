@@ -1595,17 +1595,14 @@ function on_tick()
     -- afford still shows, greyed - "REPAIR 10p" when you have 4 Parts tells you what to
     -- go and do, where hiding it would just look like the station was broken.
     --
-    -- SEE-THROUGH: the canvas has no alpha - every colour is fully opaque - so the fill
-    -- is painted as alternating single-pixel rows. The gaps let the starfield and
-    -- anything moving out there show through, which matters because you can be shot at
-    -- while parked. Cheap too: 13 rows a button instead of thousands of pixels. The
-    -- caption is a real label drawn on top, so the text stays perfectly solid.
+    -- SOLID: the panel fills opaquely so each choice reads as a real, easy-to-read button
+    -- rather than glass. (It used to paint alternating single-pixel rows so the starfield
+    -- showed through the gaps; Jake asked for non-transparent menus, so the whole box is
+    -- filled now.) The caption is a real label drawn on top, so the text stays crisp.
     for _, b in ipairs(dockButtons()) do
         local edge = b.on and 0x0a84ff or 0x3a3a42
         local fill = b.on and 0x1c3a5e or 0x24242a
-        for yy = b.y + 2, b.y + b.h - 3, 2 do
-            canvas.rect(b.x, yy, b.w, 1, fill)
-        end
+        canvas.rect(b.x, b.y, b.w, b.h, fill)
         canvas.rect(b.x, b.y, b.w, 2, edge)
         canvas.rect(b.x, b.y + b.h - 2, b.w, 2, edge)
         canvas.rect(b.x, b.y, 2, b.h, edge)
