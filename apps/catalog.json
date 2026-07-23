@@ -91,6 +91,15 @@
       "ver": "1",
       "bytes": 1911,
       "url": "apps/gpstest/main.lua"
+    },
+    {
+      "id": "weather",
+      "name": "Weather",
+      "kind": "tool",
+      "desc": "Temperature and conditions for your GPS location. Needs Wi-Fi and latest firmware.",
+      "ver": "1",
+      "bytes": 4223,
+      "url": "apps/weather/main.lua"
     }
   ]
 }
