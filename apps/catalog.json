@@ -82,6 +82,15 @@
       "ver": "1",
       "bytes": 3318,
       "url": "apps/breathe/main.lua"
+    },
+    {
+      "id": "gpstest",
+      "name": "GPS Test",
+      "kind": "tool",
+      "desc": "Shows GPS status, satellite count and your coordinates. For testing.",
+      "ver": "1",
+      "bytes": 1911,
+      "url": "apps/gpstest/main.lua"
     }
   ]
 }
