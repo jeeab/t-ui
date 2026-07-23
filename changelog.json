@@ -2,6 +2,22 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.07.22.3",
+      "date": "2026-07-22",
+      "title": "Fixes from the first outside reports, GPS for apps, and a Deep Space icon",
+      "changes": [
+        "Fixes a screen that couldn't be turned back on. Holding the gear icon on the Meshtastic screens was meant to switch the screen off, and the way back was a tap on a hidden panel - but on the T-Deck the firmware dims the backlight instead of ever showing that panel, so there was nothing to tap and every attempt to wake the device was undone a moment later. The screen stayed dark until the power was cut. It now switches off the same way a double-tap on the trackball does, which wakes properly.",
+        "Fixes rearranging your apps. Holding an app tile opens 'Arrange apps', but the new order was thrown away about a tenth of a second later, as soon as the home grid redrew. The order was only ever remembered by writing it to the SD card, so on a T-Deck with no card in it there was nowhere to write it and nothing ever stuck. The order is now kept in memory too, so rearranging works with or without a card - and still survives a reboot when a card is in.",
+        "The erase key now works as Back - it steps you out of any app, the same as a trackball double-click. If you're typing, it stays a normal backspace. On the home screen a single press does nothing, but a double-tap of erase puts the device to sleep (just like double-clicking the trackball), which helps if your trackball is stiff.",
+        "New option: a 24-hour clock. Settings has a switch to show the clock as 14:30 instead of 2:30 PM, and it changes the moment you flip it.",
+        "Settings now shows the Meshtastic version as well as this launcher's version, at the bottom of the screen. They're two different things, and there was previously nowhere to look up the Meshtastic one.",
+        "The keyboard backlight is turned on and off with the keyboard's own Alt+B shortcut, and Settings now points that out so it's easier to find.",
+        "Apps can now read the GPS. There's a new GPS Test app in Get Apps that shows whether you have a fix, how many satellites it's using, and your coordinates - the first of several new things apps will be able to do (Wi-Fi and the long-range radio are coming next).",
+        "Deep Space has its own icon on the home grid - your ship climbing up through a starfield - instead of a plain coloured tile.",
+        "Deep Space v19: Earth now genuinely exists at the centre of the galaxy (X0 Y0) and patches your hull up cheap; dying tows you home and costs you half your credits and all your Parts; lasers lock onto the enemy you're aiming at, with the beam actually reaching them; enemy fire is colour-coded by the ship that shot it; a bracket marks whatever you're locked onto; and there's a calmer patch of space around home so the swarms are something you fly out to meet. Update it from Get Apps."
+      ]
+    },
+    {
       "version": "2026.07.20.1",
       "date": "2026-07-20",
       "title": "Apps reopen reliably, and a lock on/off switch",
