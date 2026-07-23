@@ -96,9 +96,9 @@
       "id": "weather",
       "name": "Weather",
       "kind": "tool",
-      "desc": "Temperature and conditions for your GPS location. Needs Wi-Fi and latest firmware.",
-      "ver": "1",
-      "bytes": 4223,
+      "desc": "Temperature and conditions for your area, from Wi-Fi (or GPS). Needs latest firmware.",
+      "ver": "2",
+      "bytes": 5129,
       "url": "apps/weather/main.lua"
     }
   ]
