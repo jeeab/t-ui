@@ -100,6 +100,15 @@
       "ver": "2",
       "bytes": 5129,
       "url": "apps/weather/main.lua"
+    },
+    {
+      "id": "reader",
+      "name": "Reader",
+      "kind": "tool",
+      "desc": "A paginated text reader for off-grid reference books and stories.",
+      "ver": "1",
+      "bytes": 10974,
+      "url": "apps/reader/main.lua"
     }
   ]
 }
