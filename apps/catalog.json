@@ -7,8 +7,8 @@
       "name": "Stars",
       "kind": "game",
       "desc": "Explore a galaxy: hunt pirates for bounty, salvage wrecks, upgrade at steel stations.",
-      "ver": "20",
-      "bytes": 92045,
+      "ver": "21",
+      "bytes": 92247,
       "url": "apps/stars/main.lua"
     },
     {
@@ -96,9 +96,9 @@
       "id": "weather",
       "name": "Weather",
       "kind": "tool",
-      "desc": "Temperature and conditions for your area, from Wi-Fi (or GPS). Needs latest firmware.",
-      "ver": "2",
-      "bytes": 5129,
+      "desc": "Conditions now plus a 7-day forecast for your area, saved so it opens instantly. Needs latest firmware.",
+      "ver": "3",
+      "bytes": 11681,
       "url": "apps/weather/main.lua"
     },
     {

@@ -22,6 +22,11 @@
 -- and a station you find at 412,-89 is still there when you fly back. Same seed =
 -- same galaxy, so two devices can explore the identical universe.
 ----------------------------------------------------------------------------------
+
+-- L and P (laser, missile) sit right next to the erase key, so keep erase for ourselves —
+-- the launcher won't quit the game on a stray press. Exit with a trackball double-click.
+keep_back = true
+
 local W, H = 320, 240
 local CX, CY = W / 2, H / 2
 local STARS = 200

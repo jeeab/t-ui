@@ -2,6 +2,20 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.08.05.3",
+      "date": "2026-08-05",
+      "title": "Get Apps can reach the app list again, and apps can now use the internet",
+      "changes": [
+        "Fixes Get Apps saying it couldn't reach the app list. This was not the server and not your Wi-Fi - the device was running out of memory in a way that doesn't look like running out of memory. Downloading over a secure connection needs one unbroken stretch of the chip's small pool of fast memory, about 34 KB of it, and it has to be one continuous piece. There was plenty free in total (79 KB) but by the time you opened Get Apps it had been broken into scattered pieces, the largest only 16 KB, so the download could never start. Nothing had broken it: the device just accumulates more to keep track of over time (233 radios on the mesh now), the memory got more scattered, and one day it crossed the line. The firmware now sets one clean stretch of memory aside in its very first instruction at startup, before anything can break it up, and hands it over whenever a download needs it. The device also gives the server 12 seconds to answer instead of 4, and switches Bluetooth off before downloading, which frees more room on devices that do have it on.",
+        "Apps can use the internet. An app can now fetch information from the web - weather, tides, whatever it needs - without freezing while it waits. Wi-Fi has to be set up in Settings first. The new Weather app in Get Apps is the first one to use it.",
+        "Apps can bring their own icon. Until now every app icon had to be drawn into the firmware, so a new app in Get Apps arrived as a plain coloured square unless the firmware was updated too. An app can now ship its own little picture and it appears on the home screen the moment it's installed - no firmware update needed.",
+        "Apps can keep the erase key. The erase key normally backs you out of an app. In a game with controls next to it that meant a fumbled key quit the game. An app can now ask to keep that key for itself, and Stars does. A trackball double-click still gets you out of anything.",
+        "The Weather app has a proper icon on the home screen.",
+        "Weather now shows a 7-day forecast - the day, the high and low, and what it's doing - underneath the current conditions. It saves the forecast on the card, so opening the app shows it straight away with no waiting and without switching Wi-Fi on. It only fetches new weather when you tap the Refresh button in the top right, so a stray tap can't send it off to the internet.",
+        "Fixes Weather never finding your location when you don't have a GPS fix. It asks the internet roughly where you are instead, but a subtle slip meant it only ever read the latitude and threw the longitude away, so it gave up every time and said it couldn't get the weather."
+      ]
+    },
+    {
       "version": "2026.07.22.3",
       "date": "2026-07-22",
       "title": "Fixes from the first outside reports, GPS for apps, and a Deep Space icon",

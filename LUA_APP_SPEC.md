@@ -44,6 +44,19 @@ except that you'll almost always want `on_open`.
 `dt` in `on_tick` is a nominal ~33 (ms). It does NOT measure real elapsed time — if you need
 accurate timing (e.g. a metronome, a countdown), read `device.time()` yourself and compare.
 
+### Keeping the Back (erase) key — `keep_back`
+Normally the **erase** key backs the user out of your app (like a Back button). If your app uses
+keys near erase as controls — a game with `L`/`P` on the keyboard, say — a fumble could quit it.
+Put this at the top of your script to keep the key for yourself:
+
+```lua
+keep_back = true
+```
+
+Now erase no longer quits your app; it arrives as a normal key press instead (you can use it or
+ignore it). Users still exit any app with a **trackball double-click**, so don't worry about
+trapping them. *(Needs the latest firmware; older builds ignore the flag.)*
+
 ## The API: functions the system gives YOU
 This is the **complete** toolbox. There is nothing else.
 
@@ -80,6 +93,52 @@ Limits: at most **64 elements** on screen at once. Text uses one built-in font (
 
   `on_touch`/`on_drag` still work and are simpler — reach for `device.touches()` only when you
   genuinely need two fingers at the same time.
+- `device.gps()` — **your location.** Returns `lat, lon, sats` as plain decimal degrees (e.g.
+  `47.61, -122.33`) plus the satellite count. Until there's a fix, `lat`/`lon` are `nil` but
+  `sats` still updates, so you can show the search progressing:
+
+  ```lua
+  local lat, lon, sats = device.gps()
+  if lat then
+    screen.label(1, 10, 10, "You're at " .. lat .. ", " .. lon)
+  else
+    screen.label(1, 10, 10, "Searching... " .. (sats or 0) .. " satellites")
+  end
+  ```
+
+  GPS usually won't lock indoors — expect "searching" with a climbing satellite count unless
+  there's a view of the sky.
+
+### Internet (Wi-Fi) — for the latest firmware
+Fetch data from the web without freezing your app. Wi-Fi must be set up in Settings first.
+The fetch runs in the background; you **start** it, then **check back** on later frames — never
+sit and wait for it.
+
+- `net.fetch(url)` — start fetching a URL. Returns `true` if it began, or `false` if Wi-Fi
+  isn't set up (or a fetch is already running). Use `https://` URLs.
+- `net.status()` — `"idle"`, `"working"`, `"done"`, or `"error"`.
+- `net.body()` — once status is `"done"`, returns the fetched text (and clears the result).
+  Returns `nil` otherwise.
+- `net.reset()` — throw away a done/error result so you can try again cleanly.
+
+```lua
+function on_touch()
+  net.fetch("https://api.open-meteo.com/v1/forecast?latitude=47.6&longitude=-122.3&current=temperature_2m")
+end
+
+function on_tick()
+  if net.status() == "done" then
+    local body = net.body()
+    local temp = body:match('"temperature_2m":([%-%d%.]+)')  -- there's no JSON reader; string.match does the job
+    screen.label(1, 10, 10, "It's " .. (temp or "?") .. " degrees")
+  end
+end
+```
+
+**Two things to know:** the Lua sandbox has no JSON parser, so pull values out of the response
+with `string.match` (fine for simple APIs like Open-Meteo). And bringing Wi-Fi up **drops the
+Bluetooth connection to the phone app until the next reboot** — the device's one radio can't do
+both at once.
 
 ### The canvas — for games (firmware 2026.07.19.2 and newer)
 `screen.*` above is a **UI toolkit**: every element is a real object and there's a hard ceiling
