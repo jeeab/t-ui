@@ -1,12 +1,15 @@
 ﻿{
   "name": "T-UI (T-Deck)",
-  "version": "2026.08.05.3",
+  "version": "2026.08.05.5",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-S3",
       "parts": [
-        { "path": "t-ui-tdeck.factory.bin", "offset": 0 }
+        {
+          "path": "t-ui-tdeck.factory.bin",
+          "offset": 0
+        }
       ]
     }
   ]

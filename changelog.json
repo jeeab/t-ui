@@ -2,6 +2,18 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.08.05.5",
+      "date": "2026-08-05",
+      "title": "Apps can reach the internet properly - Weather works, and quickly",
+      "changes": [
+        "Fixes apps not being able to reach the internet - the Weather app would say it couldn't get the weather even with Wi-Fi connected and working. This is the same memory problem fixed in the last release, in a place it was missed. Downloading over a secure connection needs one unbroken stretch of the chip's fast memory, and the last release set that memory aside and handed it to Get Apps. But there are four separate places in the firmware that download things, and only two of them were given it. Apps had their own way onto the internet, and it was still starving. All four now use the same reserved memory.",
+        "Fixes map downloads failing the same way. Nobody had reported this one - it was found by checking every place that downloads something, rather than waiting for it to go wrong. On a device that had been running a while, downloading map tiles would have failed exactly like Get Apps did.",
+        "Weather now draws a little picture next to each day - sun, cloud, rain, snow, fog or a storm - so you can read the week at a glance without reading every word.",
+        "Weather has a C/F button in the bottom right. It switches instantly and works on the saved forecast, because temperatures are stored one way and converted when they're drawn - so changing units never needs the internet. Your choice is remembered.",
+        "Makes the Weather app fast. It was taking tens of seconds, and the reason was that the firmware switched Wi-Fi off after every single download - so an app that fetches twice (Weather asks where you are, then what the weather is) sat waiting for a whole Wi-Fi reconnection in the middle, for no reason. Worse, it was switching off Wi-Fi that the device had connected itself, which is what made the connection drop and reconnect repeatedly. It now reuses a connection that's already up, only switches off what it switched on, and holds the connection briefly in case another download follows. Measured on the device: the second download went from a full reconnect to 1.2 seconds."
+      ]
+    },
+    {
       "version": "2026.08.05.3",
       "date": "2026-08-05",
       "title": "Get Apps can reach the app list again, and apps can now use the internet",
