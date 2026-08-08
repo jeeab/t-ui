@@ -44,6 +44,21 @@
     border:none;border-radius:12px;padding:14px 26px;cursor:pointer;
   }
   .unsupported{color:var(--warn);font-size:14px;margin-top:6px}
+
+  /* Buy me a coffee. Was 12px dim text at the very bottom and read as fine print — easy to miss
+     entirely. Now a proper outlined pill: big enough to notice and to hit on a phone, in the warm
+     accent so it doesn't compete with the green Install button, which stays the one loud thing. */
+  .coffeewrap{display:flex;justify-content:center;margin:0 0 30px}
+  .coffee{
+    display:inline-flex;align-items:center;gap:9px;white-space:nowrap;
+    font-size:17px;font-weight:600;line-height:1;
+    color:var(--warn);text-decoration:none;
+    background:transparent;border:1.5px solid var(--warn);border-radius:999px;
+    padding:13px 24px;transition:background .15s ease,color .15s ease,transform .15s ease;
+  }
+  .coffee:hover{background:var(--warn);color:#1a1200;transform:translateY(-1px)}
+  .coffee .cup{font-size:20px}
+  @media(max-width:560px){.coffee{font-size:16px;padding:12px 20px}}
   .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0 4px}
   .step{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 8px;font-size:13px}
   .step b{display:block;font-size:20px;color:var(--accent);margin-bottom:4px}
@@ -386,9 +401,11 @@
     are MIT — fork them, change them, build your own thing. Pull requests welcome.
   </footer>
 
-  <p style="text-align:center;color:var(--dim);font-size:12px;margin:0 0 24px">
-    <a href="https://buymeacoffee.com/Jeeab" target="_blank" rel="noopener">☕ buy me a coffee</a>
-  </p>
+  <div class="coffeewrap">
+    <a class="coffee" href="https://buymeacoffee.com/Jeeab" target="_blank" rel="noopener">
+      <span class="cup">☕</span> Buy me a coffee
+    </a>
+  </div>
 
 </div>
 </body>
