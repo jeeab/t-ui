@@ -5,6 +5,18 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Share a pin with someone, and a map that stays smooth with a hundred nodes on it
+
+**2026.08.26.1** · 2026-08-26
+
+- You can share a map pin with one person or with a whole channel. Open Maps, tap Pins, and each pin now has a Share button next to its name. Pick who it goes to and it appears on their device. It is sent as an ordinary Meshtastic waypoint, so it also turns up for people running stock firmware or looking at the phone app - not just other T-UI devices.
+- Every pin says where it stands, in plain English, on the line under its name: "Not shared", "Shared with Nick", "Shared to LongFast", or "From Nick" for one somebody sent you. On the map, a pin you dropped is a solid dot and a pin somebody shared with you is a hollow ring - the same rule the node markers use, so there is only one thing to remember: solid means yours.
+- Sharing and unsharing both ask first. Choosing who to share with no longer sends the moment you tap a name; a box comes up telling you exactly who is about to get it. The unshare box tells you the thing that is easy to get wrong - unsharing is a request, not a command, and anyone out of range when it goes out keeps their copy.
+- Unsharing no longer gives up after one try. Before, it was a single message sent once into the air: if the person was out of range or switched off at that moment, it was simply lost and their copy of your pin was permanent - while your own screen said "Not shared". Now the device remembers and keeps asking. It re-sends twice in the first couple of minutes, then after 5, 15 and 30 minutes, an hour, and then every couple of hours for a week. Much more usefully, the moment it hears anything at all from someone the unshare is aimed at - which proves they are in range right now - it fires it straight at them. The reminder survives deleting the pin and survives switching the device off, and the Pins list shows "still asking" until it is done.
+- The Nodes on/off switch has moved onto the map itself - a pill in the bottom right next to the settings cog, instead of being buried in the Pins list. Tapping it now tells you what happened: "Nodes on - 3 on the map", or "none have sent a position yet", which is usually the real reason you cannot see anybody. A node only appears on a map once it has broadcast its position, and plenty never do.
+- Makes the map far smoother when there are a lot of nodes on it - tested with 121. Every marker used to be drawn among the map tiles, which meant that on every single redraw, every marker had to be pushed back to the front so the newly loaded tiles would not cover it. With 121 nodes that was hundreds of reorders per frame while you dragged the map, each one forcing part of the screen to be redrawn and re-sent to the display. Markers now sit in their own layer above the tiles, where nothing has to be reordered at all. On top of that, a marker is only moved or hidden when it has actually changed, and node name tags come off when you zoom out - which is exactly when all of them are on screen and the names are unreadable anyway.
+
+
 ## Apps can reach the internet properly - Weather works, and quickly
 
 **2026.08.05.5** · 2026-08-05
