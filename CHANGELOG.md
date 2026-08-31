@@ -5,6 +5,14 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Backspace erases again when you are typing a Wi-Fi password
+
+**2026.08.30.1** · 2026-08-30
+
+- Fixes backspace in the boxes that pop up over the screen when you type something in. The worst one: entering a Wi-Fi password. The erase key doubles as a Back button on this device, and it was supposed to stop doing that while you are typing - but in these particular pop-up boxes it did not. One typo in a long password and the erase key threw the whole box away and sent you back, so you had to start the password from the beginning.
+- The same fix covers the other pop-up boxes that had it: the Wi-Fi network name, renaming a map pin, and naming a new folder in Files. Typing anywhere else - the Notes editor, a mesh message, the lock PIN - was never affected and is unchanged.
+
+
 ## Share a pin with someone, and a map that stays smooth with a hundred nodes on it
 
 **2026.08.26.1** · 2026-08-26
