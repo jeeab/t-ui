@@ -5,6 +5,14 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Removes the power saving option
+
+**2026.09.04.1** · 2026-09-04
+
+- Removes the "Power saving" setting added in the previous release. It slowed the processor down while the screen was off and locked, and it could crash the device when you woke it up and typed your PIN. The cause was timing rather than speed - the processor speed was being changed a fraction of a second into drawing the PIN screen, while the display was still being written to. It was fixable, but the setting was saving very little in the first place: it stood aside whenever wi-fi or Bluetooth was in use, which on a device you actually carry is most of the time. Battery life is fine without it, so it has been taken out entirely rather than patched.
+- If you had switched it on, there is nothing to do - the setting is simply gone and the device runs at its normal speed.
+
+
 ## Runs out of memory far less often, and tells you why things fail
 
 **2026.09.03.1** · 2026-09-03

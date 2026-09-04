@@ -2,6 +2,15 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.09.04.1",
+      "date": "2026-09-04",
+      "title": "Removes the power saving option",
+      "changes": [
+        "Removes the \"Power saving\" setting added in the previous release. It slowed the processor down while the screen was off and locked, and it could crash the device when you woke it up and typed your PIN. The cause was timing rather than speed - the processor speed was being changed a fraction of a second into drawing the PIN screen, while the display was still being written to. It was fixable, but the setting was saving very little in the first place: it stood aside whenever wi-fi or Bluetooth was in use, which on a device you actually carry is most of the time. Battery life is fine without it, so it has been taken out entirely rather than patched.",
+        "If you had switched it on, there is nothing to do - the setting is simply gone and the device runs at its normal speed."
+      ]
+    },
+    {
       "version": "2026.09.03.1",
       "date": "2026-09-03",
       "title": "Runs out of memory far less often, and tells you why things fail",
