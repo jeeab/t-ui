@@ -5,6 +5,22 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Runs out of memory far less often, and tells you why things fail
+
+**2026.09.03.1** · 2026-09-03
+
+- Fixes the crashes that happened at seemingly random moments, most often when moving between the Maps app and the Meshtastic app. The device keeps its own record of how little memory it has had free, and reading that back showed it getting down to under a thousand bytes - effectively empty, at which point the next thing that needs memory fails and the device falls over. Two chunks of the scarce, fast memory were being held permanently for jobs that only last a few seconds (copying a file, and an app reading its saved data); both now borrow the slower, plentiful memory only while they are actually working.
+- The map tile store was reserving almost all of the spare memory for itself - so much that there was often no room left to unpack the next tile it wanted to store. It now keeps a full screen of tiles plus a few, which leaves room for everything else and makes maps more reliable rather than less.
+- Downloading maps now tells you WHY a tile failed instead of just counting failures. "427 failed" could equally mean the wi-fi dropped, the connection was refused, or the server said no, and there was no way to tell them apart. It also rebuilds its connection after several failures in a row - if the server closed the connection partway through, every remaining tile used to fail for the rest of the download.
+- Satellite imagery is now one of the sources you can download from on the device itself, alongside the topographic map. The detail settings also stop at the level each map service actually has - asking for more used to start a download that quietly fetched nothing.
+- The PIN screen now turns itself off after ten seconds untouched. Before, waking the device and walking away left the screen lit until the battery ran down.
+- Fixes apps not appearing after you install them. The launcher only ever looked at the first twelve app folders on the card, and because folders come back in the order they were created, the app that disappeared was always the one you had just added. It now handles 26, and newly installed apps appear at the front where you can find them.
+- Fixes the map style list offering "0", "1", "12" and so on as if they were map styles, where picking one left you with a blank map. Those are zoom-level folders, not styles - they show up when map tiles are copied straight into the maps folder rather than into a folder of their own.
+- Adds a "Show password" tick box when typing a Wi-Fi password, which also lets a long password wrap onto more than one line so you can read the end of it.
+- Adds optional power saving, switched off by default: it slows the processor down while the screen is off and locked, and stands aside entirely whenever wi-fi or Bluetooth is in use.
+- Removes the trackball navigation switches added in the previous release. They could not be made to work without destabilising the device, and a switch that does nothing is worse than no switch. Holding the trackball to go Home, and double-clicking to go Home, both still work as before.
+
+
 ## Backspace erases again when you are typing a Wi-Fi password
 
 **2026.08.30.1** · 2026-08-30
