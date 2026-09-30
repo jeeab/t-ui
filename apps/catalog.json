@@ -96,9 +96,9 @@
       "id": "weather",
       "name": "Weather",
       "kind": "tool",
-      "desc": "Conditions now plus a 7-day forecast for your area, saved so it opens instantly. Needs latest firmware.",
-      "ver": "4",
-      "bytes": 13595,
+      "desc": "Now and the next 7 days, and it says which place. Needs latest firmware.",
+      "ver": "5",
+      "bytes": 18338,
       "url": "apps/weather/main.lua"
     },
     {

@@ -5,6 +5,10 @@
 -- rough location from your Wi-Fi connection (your city/area) — so you never have to wait for
 -- satellites. Set up Wi-Fi in Settings first.
 --
+-- It always SAYS where the reading is for, at the top: the town if it can be named, and the
+-- coordinates if it can't. "GPS" on the wind line means exact; "approx" means the town was
+-- guessed from your internet connection and could be the wrong one.
+--
 -- The forecast is SAVED on the card. Opening the app shows the saved one straight away, with
 -- no waiting and no Wi-Fi. It only goes and gets fresh weather when you tap Refresh.
 --
@@ -24,16 +28,22 @@ local CLOUD = 0xd8d8dd
 local GREY  = 0x6e6e73
 
 local CACHE = "forecast.txt"
-local CACHE_VER = "3" -- bumped: temperatures are now stored raw, not pre-rounded
+local CACHE_VER = "4" -- bumped: the saved forecast now records WHERE it was for
 local UNITS_FILE = "units.txt"
 
-local state = "idle" -- idle / locating / fetching / ok / error / nowifi / oldfw
+local state = "idle" -- idle / locating / fetching / naming / ok / error / nowifi / oldfw
 local temp, wind, desc = nil, nil, nil -- temp/wind kept as raw numbers (F, mph)
 local code = nil
 local days = {}       -- up to 7 of { date=, code=, hi=, lo= }  (hi/lo raw numbers, F)
 local fromCache = false
 local lat0, lon0 = nil, nil
 local useC = false
+-- WHERE the reading is for. A temperature with no place attached is the one thing this app
+-- was missing. place is a town name once we have one; coords always exists as soon as we know
+-- a latitude, so the app can always answer "where" even when no name can be looked up.
+local place = nil
+local coords = nil
+local fromGps = false
 
 local function hasNet() return type(net) == "table" and type(net.fetch) == "function" end
 
@@ -109,7 +119,11 @@ end
 -- ---------------------------------------------------------------- saving
 
 local function saveCache()
-  local out = { CACHE_VER, (temp or "") .. "|" .. (code or "") .. "|" .. (wind or "") }
+  -- Line 2 gains the location, so a forecast restored from the card still says where it was
+  -- for instead of quietly showing yesterday's town as if it were here.
+  local out = { CACHE_VER,
+    (temp or "") .. "|" .. (code or "") .. "|" .. (wind or ""),
+    (place or "") .. "|" .. (coords or "") .. "|" .. (fromGps and "1" or "0") }
   for i = 1, #days do
     local d = days[i]
     out[#out + 1] = d.date .. "|" .. d.code .. "|" .. d.hi .. "|" .. d.lo
@@ -122,13 +136,19 @@ local function loadCache()
   if not raw then return false end
   local lines = {}
   for line in raw:gmatch("[^\n]+") do lines[#lines + 1] = line end
-  if #lines < 2 or lines[1] ~= CACHE_VER then return false end
+  -- 3, not 2: a version-4 file always has the location line, and lines[3]:match on a nil
+  -- would take the whole app down rather than just skipping a bad cache.
+  if #lines < 3 or lines[1] ~= CACHE_VER then return false end
   local t, c, w = lines[2]:match("([^|]*)|([^|]*)|([^|]*)")
   if not t or t == "" then return false end
   temp, code, wind = t, c, (w ~= "" and w or nil)
   desc = codeDesc(code)
+  local p, co, g = lines[3]:match("([^|]*)|([^|]*)|([^|]*)")
+  place = (p and p ~= "") and p or nil
+  coords = (co and co ~= "") and co or nil
+  fromGps = (g == "1")
   days = {}
-  for i = 3, #lines do
+  for i = 4, #lines do
     local date, cd, hi, lo = lines[i]:match("([^|]+)|([^|]+)|([^|]+)|([^|]+)")
     if date then days[#days + 1] = { date = date, code = cd, hi = hi, lo = lo } end
   end
@@ -200,8 +220,19 @@ local function drawRows()
   end
 end
 
+-- The title row says WHERE the forecast is for, because the launcher icon already said it was
+-- the weather app. Falls back to "WEATHER" only before the device has ever been located, and to
+-- the raw coordinates when the place has no name we can look up. Room runs to the Refresh
+-- button at x=226, which is about 26 characters.
+local function whereText()
+  local w = place or coords
+  if not w then return "WEATHER" end
+  if #w > 26 then w = w:sub(1, 25) .. "." end
+  return w
+end
+
 local function draw()
-  screen.label(1, 12, 4, "WEATHER", BLUE)
+  screen.label(1, 12, 4, whereText(), BLUE)
   screen.box(2, 226, 0, 90, 24, BTN)
   screen.label(3, 240, 4, "Refresh", WHITE)
   -- Units button, bottom right. Sits to the right of the last row's short description, so it
@@ -226,10 +257,15 @@ local function draw()
   elseif state == "error" then
     now, nowCol = "Couldn't get the weather", AMBER
     note = (#days > 0) and "Showing the last saved one." or "Check Wi-Fi, then tap Refresh."
-  elseif state == "ok" then
+  elseif state == "naming" or state == "ok" then
     now = degrees(temp) .. (useC and "C  " or "F  ") .. (desc or "")
     nowCol = WHITE
     if wind then note = "Wind " .. tostring(math.floor(tonumber(wind) + 0.5)) .. " mph" else note = "" end
+    -- Say how sure we are about the place: GPS is exactly here, a Wi-Fi lookup is the right
+    -- town on a good day and the wrong one on a bad one. Worth one word.
+    if coords or place then
+      note = note .. ((note ~= "") and "   " or "") .. (fromGps and "GPS" or "approx")
+    end
     if fromCache and days[1] then
       note = note .. ((note ~= "") and "   " or "") .. "Saved " .. shortDate(days[1].date)
     end
@@ -251,6 +287,7 @@ end
 -- Always fahrenheit: the C/F button converts on the way to the screen.
 local function fetchWeather(lat, lon)
   lat0, lon0 = lat, lon
+  coords = string.format("%.3f, %.3f", lat, lon)
   local url = string.format(
     "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f" ..
     "&current=temperature_2m,weather_code,wind_speed_10m" ..
@@ -264,18 +301,25 @@ local function fetchWeather(lat, lon)
 end
 
 local function refresh()
-  if state == "locating" or state == "fetching" then return end
+  if state == "locating" or state == "fetching" or state == "naming" then return end
   if not hasNet() then
     state = "oldfw"; draw(); return
   end
   fromCache = false
   local lat, lon = device.gps()
   if lat then
+    if not fromGps then place = nil end -- switching from a guessed town to a real fix
+    fromGps = true
     fetchWeather(lat, lon)
   elseif lat0 then
-    fetchWeather(lat0, lon0)
+    fetchWeather(lat0, lon0) -- same spot as last time, so whatever we called it still holds
   else
-    if not net.fetch("https://ipapi.co/latlong/") then
+    fromGps = false
+    place = nil
+    -- The JSON form of the same lookup: it returns the town's NAME alongside the coordinates,
+    -- so one fetch answers both "where am I" and "what is it called". (~800 bytes; the
+    -- firmware rejects a response over 8KB outright, so small matters.)
+    if not net.fetch("https://ipapi.co/json/") then
       state = "nowifi"; draw(); return
     end
     state = "locating"; draw()
@@ -326,7 +370,7 @@ function on_touch(x, y)
     draw()
     return
   end
-  if state == "locating" or state == "fetching" then return end
+  if state == "locating" or state == "fetching" or state == "naming" then return end
   -- Only Refresh fetches. A stray tap anywhere else does nothing, so the app can't quietly
   -- turn Wi-Fi on behind your back.
   if x >= 220 and y <= 30 then
@@ -342,7 +386,16 @@ function on_tick()
       -- Do NOT write this as `local lat, lon = body and body:match(...)`. In Lua, `x and f()`
       -- yields exactly ONE value, so lon would always be nil and this path could never work.
       local lat, lon
-      if body then lat, lon = body:match("([%-%d%.]+)%s*,%s*([%-%d%.]+)") end
+      if body then
+        lat = body:match('"latitude":%s*([%-%d%.]+)')
+        lon = body:match('"longitude":%s*([%-%d%.]+)')
+        -- Name the town from the very same reply. region_code keeps it to "Seattle, WA".
+        local city = body:match('"city":%s*"([^"]*)"')
+        local region = body:match('"region_code":%s*"([^"]*)"') or body:match('"region":%s*"([^"]*)"')
+        if city and city ~= "" then
+          place = (region and region ~= "") and (city .. ", " .. region) or city
+        end
+      end
       if lat and lon then
         fetchWeather(tonumber(lat), tonumber(lon))
       else
@@ -363,8 +416,42 @@ function on_tick()
         state = "error"
       end
       draw()
+      -- On the GPS path we know exactly where we are but not what it is CALLED. The forecast
+      -- is already on screen and the coordinates are already showing, so this last lookup is
+      -- pure polish: if it fails, the coordinates simply stay. (BigDataCloud's free
+      -- reverse-geocode needs no key; "city" comes near the START of its reply, so even a big
+      -- response is parsed before the bulky localityInfo section.)
+      if state == "ok" and not place and lat0 then
+        local url = string.format(
+          "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=%.4f&longitude=%.4f&localityLanguage=en",
+          lat0, lon0)
+        if net.fetch(url) then
+          state = "naming"; draw()
+        end
+      end
     elseif s == "error" then
       net.reset(); state = "error"; draw()
+    end
+  elseif state == "naming" then
+    local s = net.status()
+    if s == "done" then
+      local body = net.body()
+      if body then
+        local city = body:match('"city":%s*"([^"]*)"')
+        if not city or city == "" then city = body:match('"locality":%s*"([^"]*)"') end
+        -- principalSubdivisionCode is "US-WA"; the bit after the dash is the short form that
+        -- fits. Fall back to the full name ("Washington") if the code isn't there.
+        local region = body:match('"principalSubdivisionCode":%s*"[^"-]*%-([^"]*)"')
+        if not region then region = body:match('"principalSubdivision":%s*"([^"]*)"') end
+        if city and city ~= "" then
+          place = (region and region ~= "") and (city .. ", " .. region) or city
+          saveCache() -- keep the name with the forecast it belongs to
+        end
+      end
+      state = "ok"; draw()
+    elseif s == "error" then
+      -- No name available. The coordinates on the title row already answer "where".
+      net.reset(); state = "ok"; draw()
     end
   end
 end

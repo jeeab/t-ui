@@ -2,6 +2,31 @@
   "note": "Source of truth for the What's new section on index.html and for CHANGELOG.md. Newest first. Keep each 'changes' line in plain English - people reading this are not developers.",
   "releases": [
     {
+      "version": "2026.09.29.1",
+      "date": "2026-09-29",
+      "title": "Chess, Mail and Gemini, a lock screen that shows who messaged you, and far fewer crashes",
+      "changes": [
+        "Fixes the crashes that happened when moving from app to app. Opening Maps took a large slice of the device's small, fast memory for its markers and never gave it back, and every app opened after that took a little more, until the device ran out and restarted. Those now live in the large, plentiful memory instead. In testing, the fast memory now stays level through every app, Maps included, where before it ran down to almost nothing.",
+        "Fixes new mesh messages not reaching the screen. A safety limit meant to protect memory was set above where the device normally sits, so a minute or so after starting up it stopped passing messages to the screen and Meshtastic threw them away. The limit now watches the memory those messages are actually kept in.",
+        "Fixes restarts when the device fetches something over a weak wi-fi connection - the lock-screen weather, Get Apps, Gemini, Mail or a map download. A secure connection could wait up to two minutes for an answer, longer than the device's own safety timer allows. It now gives up after 15 seconds and tries again later.",
+        "Starts up about 15 seconds faster. It no longer reads through the SD card's entire table of contents at startup just to show how full the card is - the screen, the card and the radio were all waiting while it did. The Meshtastic home screen now shows the card's size without the \"used\" figure.",
+        "New: Chess. Play the device at six levels from Beginner to Max. It thinks on its own processor core, so the screen and radio carry on while it does, saves your game after every move, and gives its memory back when you close it. You are always White; if you leave or the device restarts while it is thinking, it picks up its move when you come back.",
+        "New: Mail, for Gmail. Read your inbox, open messages, write, reply and forward. You sign in with a Google \"app password\" typed on the device - it is kept only on your SD card, never written to the log, and screenshots are refused while the sign-in form is on screen. The \"Who?\" button offers people you have written to and recent senders.",
+        "New: Gemini. Ask Google's Gemini a question over wi-fi and read the answer. It needs your own free key; the ? button explains how to get one.",
+        "New: Nodes, Favorites and Chats. A node list with a favourite star and a button on every row to message, show on the map, trace the route or ask for a position; a Favorites list; and one list of your conversations with the latest line of each.",
+        "New lock screen: the time, date, weather and who has messaged you, with slide to unlock (or an Unlock button, or a double-click). Unlocking takes you back to the app you were in. Settings let you choose how often it asks for your PIN.",
+        "Notifications: a pop-up and a sound when a message arrives, whatever you are doing, and a list of recent ones - tap the count at the top of the screen. Unread counts are kept per conversation.",
+        "A bar across the top of most screens with the time, battery and notification count.",
+        "Maps: zoom in past the detail you have downloaded (the nearest map square is enlarged), I and O zoom from the keyboard, and a coverage mapper can record where you heard the mesh and draw it as a heat map.",
+        "The Stopwatch app becomes Clock, with a wake-up alarm.",
+        "A trackball cursor: an on-screen arrow you can steer with the trackball, with speed settings.",
+        "Emoji that people send you now appear instead of being invisible.",
+        "Save a screenshot to the SD card, and send your location right away from Settings.",
+        "Settings has headings and a Back button you can reach, and the weather can show F or C.",
+        "The Weather app (update it from Get Apps) now says which place the forecast is for."
+      ]
+    },
+    {
       "version": "2026.09.04.1",
       "date": "2026-09-04",
       "title": "Removes the power saving option",
