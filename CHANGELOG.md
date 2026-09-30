@@ -5,6 +5,18 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## A crash fix, smoother maps when zoomed past your downloaded detail, and Mail fixes
+
+**2026.09.30.1** · 2026-09-30
+
+- Fixes a crash that could happen when a new node was heard while Maps or Chess was using a lot of memory. Every time the device hears a new node it saves its node list, and part of that save needs one large block of memory; if Maps or Chess had just taken most of it, the save failed and took the device down with it. The save now waits for the next time instead, and Maps and Chess both leave room for everything else - Maps hands its memory back when you close it, and Chess picks a smaller thinking table when memory is short. Found by stress-testing the device over the USB cable.
+- Maps are much smoother at the deepest zoom levels. When you zoom in further than the map you downloaded, each square is filled with an enlarged piece of the square above it - and before, every square on screen was redrawing that whole enlarged picture, stacked on top of each other, on every frame while you panned. Each square now cuts out just its own piece once. Measured at the same spot and zoom: frames came about 2.5 times faster. It also stops trying to download map squares from the internet at zoom levels the map service does not have - on wi-fi, every one of those attempts froze the screen for a moment.
+- Fixes Chess (and Gemini) losing the bar across the top of the screen after being opened many times in one day, with everything on the screen shifting up.
+- Mail: long subject lines that were written in another character set now show as words instead of "=?UTF-8?...".
+- Mail: Reply now opens with the cursor at the top, ready to type, instead of scrolled down to the bottom of the quoted message.
+- Mail: the "Who?" list leaves out noreply addresses, which nobody reads.
+
+
 ## Chess, Mail and Gemini, a lock screen that shows who messaged you, and far fewer crashes
 
 **2026.09.29.1** · 2026-09-29
