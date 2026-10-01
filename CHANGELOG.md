@@ -5,6 +5,13 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Pins shows all your pins again after a search
+
+**2026.09.30.3** · 2026-09-30
+
+- Fixes the Pins button showing only your last search's results. The magnifier and Pins share one search box, and Pins kept whatever you had searched for - search for a lake, and Pins showed only matches for that lake instead of your pins. Pins now always opens on all of them.
+
+
 ## Search for places on the map, offline - plus a real Maps settings menu
 
 **2026.09.30.2** · 2026-09-30
