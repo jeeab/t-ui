@@ -5,6 +5,15 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## A ruler on the map, and your height above sea level
+
+**2026.09.30.4** · 2026-09-30
+
+- A ruler on the map, left of the magnifying glass: tap it, tap one point, tap another, and it draws a line between them with the straight-line distance and direction - "0.93 mi NW from Home". Tap near a pin and it snaps to the pin, so pin to pin is two taps. The line moves with the map. Tap the ruler again to put it away.
+- Your height above sea level, from the GPS, now shows in the bottom-left corner of the map whenever there is a solid fix (four satellites or more). GPS height can be out by 30 to 60 feet.
+- Distances read more easily: feet only up to 1,000 ft, then miles with two decimals ("0.93 mi" rather than "4903 ft"). Same in kilometres if you use them.
+
+
 ## Pins shows all your pins again after a search
 
 **2026.09.30.3** · 2026-09-30
