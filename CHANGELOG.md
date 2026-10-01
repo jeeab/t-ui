@@ -5,6 +5,19 @@ Every release, newest first. Written for people using the device, not developers
 Install the latest from **<https://jeeab.github.io/t-ui/>**.
 
 
+## Search for places on the map, offline - plus a real Maps settings menu
+
+**2026.09.30.2** · 2026-09-30
+
+- Maps can now find places with no signal: towns, cities, lakes, ponds, rivers, peaks, passes, springs, campgrounds and more, across the whole of the USA and Europe. Tap the new magnifying glass beside the cog and start typing. Go shows the place on the map with a yellow ring; Pin keeps it as a pin you can share. Local spellings work too: "Wien" finds Vienna, "München" finds Munich.
+- Suggestions as you type: from the second letter, the biggest matching cities come up - type "san" and San Diego, San Jose and San Francisco appear - with everything nearby listed underneath. When something nearby is exactly what you typed, it goes on top instead.
+- Getting the names onto the card: "Download this area" now brings the place names for the area along with the map. Already have your maps? Gear > Place names for search > Near the map, All of the USA, or All of Europe. The nearest areas come first, anything already on the card is skipped, and it can be stopped and carried on later. On a home connection the whole of the USA takes roughly half an hour. The website also has each region as one download to unzip onto the card.
+- The cog on the map opens a proper settings menu: map style, download this area, place names, units (miles or kilometres - the same switch as the weather's F/C), where the map opens when there is no GPS fix (the last place you looked at, or home), set home to the spot on screen, nodes on the map, and the coverage recorder.
+- Without a GPS fix the map used to put the blue "you are here" dot on your home spot, as if it knew where you were. It doesn't any more.
+- Pin and node names on the map now show accented letters and emoji (they used a font with plain English letters only, so "Köln" came out as "Kln").
+- Fixes the map freezing for many seconds at a time on Wi-Fi when you look at an area that isn't downloaded. It was fetching every missing square back to back, each with a brand-new secure connection, and gave up on any square that took more than a moment to start arriving - so it had to fetch it all over again. It now fetches one square at a time between screen refreshes, over one connection that it hangs up as soon as the squares stop coming. Map and place-name downloads use one connection too.
+
+
 ## A crash fix, smoother maps when zoomed past your downloaded detail, and Mail fixes
 
 **2026.09.30.1** · 2026-09-30

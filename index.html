@@ -184,6 +184,7 @@
       <h4>🛰️ Maps and GPS, offline</h4>
       <ul>
         <li>Download map areas over wi‑fi ahead of time, then use them with no signal at all.</li>
+        <li>Search for towns, lakes, peaks, rivers and trailheads across the USA and Europe, also with no signal: tap the magnifying glass.</li>
         <li>Drop and name pins, see other people on the mesh, and record a heat map of where you could hear the mesh.</li>
       </ul>
       <h4>🌐 When there is wi‑fi</h4>
@@ -299,7 +300,7 @@
         <li><strong>TopPlusOpen</strong> — Europe‑wide (and usable worldwide at lower detail), published by
           Germany's federal mapping agency.</li>
       </ul>
-      <p style="color:var(--dim)">Pick your source from the same gear menu before downloading.</p>
+      <p style="color:var(--dim)">Pick your source on the download screen before you start.</p>
       <div class="warnbox" style="background:rgba(255,255,255,.04);border-color:var(--line);color:var(--dim)">
         <strong>Map credits.</strong> USGS Topo is from
         <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">The
@@ -308,6 +309,37 @@
         Kartographie und Geod&auml;sie (BKG)</a>, provided as open data under
         <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl&#8209;de/by&#8209;2&#8209;0</a>.
         These credits are also shown on the device itself whenever the maps are on screen.
+      </div>
+
+      <h4>🔎 Search for places, offline</h4>
+      <p>Tap the <strong>magnifying glass</strong> on the map and start typing: towns, cities, lakes, ponds,
+      rivers, peaks, passes, springs, campgrounds and more, nearest first. It works with no signal, because
+      the names live on the SD card.</p>
+      <ul>
+        <li>Big cities are suggested from the second letter: type “san” and San Jose, San Francisco and
+          San Diego come up, above whatever is nearby.</li>
+        <li><strong>Download this area</strong> fetches the place names for the area along with the map.</li>
+        <li><strong>Already have your maps?</strong> Tap the gear, choose <strong>Place names for search</strong>,
+          and pick <strong>Near the map</strong>, <strong>All of the USA</strong> or <strong>All of Europe</strong>.
+          It skips anything already on the card, so it can be stopped and carried on later.</li>
+        <li>Or put a <strong>whole region</strong> on the card from a computer. Unzip it onto the SD card so there's a
+          <code>names</code> folder at the top level, next to <code>maps</code>:
+          <ul>
+            <li><a href="https://github.com/jeeab/t-ui-names/releases/latest/download/names-usa.zip">All of the USA</a>
+              — 27&nbsp;MB download, 72&nbsp;MB on the card</li>
+            <li><a href="https://github.com/jeeab/t-ui-names/releases/latest/download/names-europe.zip">All of Europe</a>
+              — 56&nbsp;MB download, 134&nbsp;MB on the card</li>
+          </ul></li>
+        <li>Search looks around the middle of the map, so pan to where you're going first. Local spellings work
+          too: “München” finds Munich, “Wien” finds Vienna.</li>
+        <li>Found it? <strong>Go</strong> shows it on the map with a yellow ring; <strong>Pin</strong> keeps it as a pin.</li>
+      </ul>
+      <div class="warnbox" style="background:rgba(255,255,255,.04);border-color:var(--line);color:var(--dim)">
+        <strong>Place-name credits.</strong> USA names are from the
+        <a href="https://www.usgs.gov/tools/geographic-names-information-system-gnis" target="_blank" rel="noopener">USGS
+        Geographic Names Information System</a> (public domain). European names and world cities are from
+        <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a>, licensed
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a>.
       </div>
 
       <h4>💻 Load them from a computer (anywhere else in the world)</h4>
@@ -320,8 +352,8 @@
           in <code>/maps/&lt;zoom&gt;/&lt;x&gt;/&lt;y&gt;.png</code> form.</li>
         <li>Use a community “map tile downloader” for the Meshtastic T‑Deck to grab your area (pick a region and
           zoom range, it produces the <code>/maps</code> folder), then copy that folder onto the SD card.</li>
-        <li>Pop the card back in — the <strong>Maps</strong> app now shows your area, and you can long‑press to
-          drop pins.</li>
+        <li>Pop the card back in — the <strong>Maps</strong> app now shows your area, and
+          <strong>Pins → Add pin</strong> drops a pin wherever you tap next.</li>
       </ul>
       <p style="color:var(--dim)">Tip: search “Meshtastic T‑Deck offline map tiles” for the current downloader
       tools and step‑by‑step. Start with a smaller zoom range so it doesn't take forever.</p>
